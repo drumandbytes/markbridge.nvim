@@ -15,6 +15,7 @@ const candidates = [process.env.BROWSER, '/Applications/Google Chrome.app/Conten
 const executablePath = candidates.find(p => p && existsSync(p));
 if (!executablePath) throw new Error('no Chromium-based browser found: set BROWSER');
 
+async function run(scheme) {
 const tmp = mkdtempSync(join(tmpdir(), 'markbridge-shots-'));
 const doc = join(tmp, 'launch-plan.md');
 const sock = join(tmp, 'nvim.sock');
@@ -37,8 +38,8 @@ const url = readFileSync(urlFile, 'utf8');
 
 const browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
-const shot = async (name, opts = {}) => { await sleep(500); if (!opts.clip) await page.evaluate(() => scrollTo(0, 0)); await page.screenshot({ path: join(out, name + '.png'), ...opts }); console.log('wrote', name); };
-const load = async (scheme, w = 1000, h = 760) => {
+const shot = async (name, opts = {}) => { await sleep(500); if (!opts.clip) await page.evaluate(() => scrollTo(0, 0)); await page.screenshot({ path: join(out, `${name}-${scheme}.png`), ...opts }); console.log('wrote', `${name}-${scheme}`); };
+const load = async (_ignored, w = 1000, h = 760) => {
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: scheme }]);
   await page.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
   await page.goto(url, { waitUntil: 'networkidle0' });
@@ -49,31 +50,28 @@ const load = async (scheme, w = 1000, h = 760) => {
 const clip = async sel => { const b = await (await page.$(sel)).boundingBox(); return { x: Math.max(b.x - 16, 0), y: Math.max(b.y - 56, 0), width: b.width + 32, height: b.height + 80 }; };
 
 try {
-  // The page, both themes.
-  await load('light'); await shot('page-light', {});
-  await load('dark'); await shot('page-dark', {});
+  await load(scheme); await shot('page', {});
 
-  // Light for the feature shots.
-  await load('light', 1000, 700);
+  await load(scheme, 1000, 700);
   await page.hover('#doc > p'); await sleep(200);
   await page.click('#hnd > button'); await sleep(200);
   await shot('block-menu', {});
   await page.keyboard.press('Escape'); await page.mouse.click(900, 650);
 
-  await load('light', 1000, 900);
+  await load(scheme, 1000, 900);
   await page.click('td'); await sleep(300);
   const t = await clip('table'); await shot('table', { clip: t });
 
   await page.click('pre.mb-raw'); await sleep(300);
   const c = await clip('textarea.mb-raw-edit'); await shot('code-edit', { clip: c });
 
-  await load('light', 1000, 700);
+  await load(scheme, 1000, 700);
   await page.click('[data-f="help"]'); await sleep(300);
   await shot('help', {});
 
   // A disk conflict: in the buffer you reword the intro and tick a checklist item; on disk the same
   // item is reworded and a table row changes. The intro and the table merge, the checklist item conflicts.
-  await load('light', 1000, 760);
+  await load(scheme, 1000, 760);
   expr(`execute("call setline(8, 'We ship the editable preview next week, once the review is done.') | call setline(14, '- [x] Review the release notes')")`);
   writeFileSync(doc, readFileSync(doc, 'utf8').replace('- [ ] Review the release notes', '- [ ] Review the release notes with Ben').replace('Friday    |  Ana  |', 'Friday    |  Ben  |'));
   await sleep(1800);
@@ -84,9 +82,12 @@ try {
   await sleep(1200);
 
   // Phone width.
-  await load('dark', 390, 800); await shot('narrow-dark', {});
+  await load(scheme, 390, 800); await shot('narrow', {});
 } finally {
   await browser.close();
   nvim.kill();
   rmSync(tmp, { recursive: true, force: true });
 }
+}
+
+for (const scheme of ['light', 'dark']) await run(scheme);

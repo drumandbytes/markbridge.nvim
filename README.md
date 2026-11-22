@@ -34,9 +34,15 @@ Browser previewers for Neovim are one-way: you read the rendering and go back to
 - No Node, no build step, no runtime dependencies: the browser libraries are vendored and checksum-pinned.
 
 <p align="center">
-  <img src="docs/screenshots/block-menu.png" alt="The block menu: move up, move down, delete, turn into, insert below" width="46%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/block-menu-dark.png">
+    <img src="docs/screenshots/block-menu-light.png" alt="The block menu: move up, move down, delete, turn into, insert below" width="46%">
+  </picture>
   &nbsp;
-  <img src="docs/screenshots/table.png" alt="A table with buttons above it to add and remove rows and columns" width="46%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/table-dark.png">
+    <img src="docs/screenshots/table-light.png" alt="A table with buttons above it to add and remove rows and columns" width="46%">
+  </picture>
 </p>
 
 ## Requirements
@@ -126,7 +132,10 @@ require('markbridge').setup {
 | Click a block | Moves the Neovim cursor to its first line |
 
 <p align="center">
-  <img src="docs/screenshots/code-edit.png" alt="A code block opened for editing as plain text" width="60%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/code-edit-dark.png">
+    <img src="docs/screenshots/code-edit-light.png" alt="A code block opened for editing as plain text" width="60%">
+  </picture>
 </p>
 
 Not editable (rendered, but read-only): HTML blocks, indented code, setext headings (a title over `====`), and paragraphs that use reference links, footnotes or `<https://…>` autolinks, because those can't be rebuilt faithfully from the page.
@@ -136,7 +145,10 @@ Not editable (rendered, but read-only): HTML blocks, indented code, setext headi
 **Top bar.** Formatting, block type and lists, undo and redo (these run Neovim's undo, so browser edits and Neovim edits share one history), Save, refresh (reloads from Neovim and re-reads the file from disk when the buffer has no unsaved edits), the theme button and help.
 
 <p align="center">
-  <img src="docs/screenshots/help.png" alt="The in-page help panel listing the shortcuts" width="60%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/help-dark.png">
+    <img src="docs/screenshots/help-light.png" alt="The in-page help panel listing the shortcuts" width="60%">
+  </picture>
 </p>
 
 ### What a browser edit does to your markdown
@@ -158,7 +170,10 @@ Neovim's buffer is the source of truth, and nothing is overwritten without you c
   - If the buffer has unsaved edits, markbridge keeps them and offers **Resolve**. It does a three-way merge against the version Neovim last read. Changes in different places combine on their own; overlapping changes are listed, and for each you pick *mine*, *the file's* or *both*. The result is written as one undo step.
 
 <p align="center">
-  <img src="docs/screenshots/merge-dialog.png" alt="The Resolve dialog: one conflict between the buffer and the file, with options to keep mine, take the file's or both" width="70%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/merge-dialog-dark.png">
+    <img src="docs/screenshots/merge-dialog-light.png" alt="The Resolve dialog: one conflict between the buffer and the file, with options to keep mine, take the file's or both" width="70%">
+  </picture>
 </p>
 
 - **Undo** is Neovim's: one browser edit is one undo step.
@@ -170,7 +185,10 @@ Neovim's buffer is the source of truth, and nothing is overwritten without you c
 Auto follows the OS and switches with it; light and dark force a theme. `theme` sets the default and the button in the top bar overrides it per browser (remembered). `:Markbridge theme dark` wins again whenever the Neovim-side setting changes. Mermaid diagrams and code highlighting follow the theme. The page is responsive: the top bar scrolls on narrow windows.
 
 <p align="center">
-  <img src="docs/screenshots/narrow-dark.png" alt="The page in dark mode at phone width" width="30%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/narrow-dark.png">
+    <img src="docs/screenshots/narrow-light.png" alt="The page at phone width: the top bar scrolls sideways" width="30%">
+  </picture>
 </p>
 
 ## Security and privacy
