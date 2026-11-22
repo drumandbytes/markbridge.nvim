@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/drumandbytes/markbridge.nvim/compare/v0.2.0...v0.3.0) (2026-11-22)
+
+
+### Features
+
+* save from the page and resolve conflicts (three-way merge) ([#9](https://github.com/drumandbytes/markbridge.nvim/issues/9)) ([31c6d99](https://github.com/drumandbytes/markbridge.nvim/commit/31c6d99f108d1718afccf40fe0c3c98f6f74d35a))
+
 ## [0.2.0](https://github.com/drumandbytes/markbridge.nvim/compare/v0.1.0...v0.2.0) (2026-11-22)
 
 
