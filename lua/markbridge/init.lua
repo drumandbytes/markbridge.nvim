@@ -187,6 +187,24 @@ local function handle(client, req)
       vim.api.nvim_buf_call(buf, function() vim.cmd(r.redo and 'silent! redo' or 'silent! undo') end)
       return server.json(client, '200 OK', { ok = true })
     end
+    if req.method == 'GET' and req.path == '/diff' then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name == '' or vim.fn.filereadable(name) == 0 then return server.json(client, '404 Not Found', { error = 'no file on disk to compare with' }) end
+      local mine = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n') .. '\n'
+      local disk = table.concat(vim.fn.readfile(name), '\n') .. '\n'
+      -- '-' lines exist only in the buffer, '+' lines only on disk
+      return server.json(client, '200 OK', { diff = vim.diff(mine, disk, { result_type = 'unified', ctxlen = 2 }), name = vim.fn.fnamemodify(name, ':t') })
+    end
+    if req.method == 'POST' and req.path == '/resolve' then
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf or (r.choice ~= 'keep' and r.choice ~= 'disk') then return server.respond(client, '400 Bad Request', 'text/plain', 'bad resolve') end
+      local cmd = r.choice == 'keep' and 'silent write!' or 'silent edit!' -- edit! is undoable (undoreload)
+      local done, err = pcall(vim.api.nvim_buf_call, buf, function() vim.cmd(cmd) end)
+      if not done then return server.json(client, '500 Internal Server Error', { error = tostring(err) }) end
+      S.disk_changed = false
+      return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
+    end
     if req.method == 'POST' and req.path == '/save' then
       local ok, r = pcall(vim.json.decode, req.body)
       r = ok and type(r) == 'table' and r or {}

@@ -371,8 +371,17 @@
     return out;
   }
 
+  // Where `old` sits in `ls` now (nearest to `near` when it appears more than once), or -1.
+  function findBlock(ls, old, near) {
+    let best = -1;
+    for (let i = 0; i + old.length <= ls.length; i++) {
+      if (old.every((l, k) => ls[i + k] === l) && (best < 0 || Math.abs(i - near) < Math.abs(best - near))) best = i;
+    }
+    return best;
+  }
+
   // Markdown for a DOM range/fragment (used to split a block at the caret).
   const fragmentToMd = frag => clean(inl(frag, false));
 
-  return { rawParts, rawBody, buildRaw, convertBlock, swapBlocks, deleteBlock, TEMPLATES, frontmatterFields, tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
+  return { findBlock, rawParts, rawBody, buildRaw, convertBlock, swapBlocks, deleteBlock, TEMPLATES, frontmatterFields, tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
 });

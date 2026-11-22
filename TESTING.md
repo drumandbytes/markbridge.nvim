@@ -18,6 +18,7 @@ mermaid block and some math:
 - [ ] Click a code block, a mermaid diagram and a `$$` block: the source opens, edits reach nvim, Esc re-renders
 - [ ] Frontmatter field edits reach nvim; list-valued fields stay read-only
 - [ ] Block handle: move up/down, delete, turn into, insert below (all kinds), each one undo step in nvim
+- [ ] Conflicts: edit a block in the page while nvim changes another (merged), then the same one (dialog, all three buttons); change the file on disk with unsaved edits (Resolve button, diff, keep mine / use the file's)
 - [ ] Save: button and Cmd/Ctrl+S write the file, the tab dot clears; refused (with a message) when the file changed on disk
 - [ ] Top bar: B/I/S/code/link on a selection, ¶/H1-H3, lists, undo/redo (also Cmd/Ctrl+Z), refresh, help panel (Esc closes)
 - [ ] The opened URL is `markbridge.localhost:<port>` and loads in each browser (Safari included); tab shows the file name and the favicon

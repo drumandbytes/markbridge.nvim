@@ -91,8 +91,10 @@
 
   const flush = el => { clearTimeout(timer); timer = null; queue = queue.then(() => commit(el)); };
 
-  // Sends one edit. Resolves true when nvim applied it; on a stale edit nvim wins and the page reloads.
-  async function send(s, e, old, nl) {
+  // Sends one edit. Resolves true when nvim applied it. When nvim changed first the page reloads from
+  // nvim, then the edit is re-applied if its block is still there unchanged ('rebased'); if nvim
+  // changed that block too, the two versions are shown and you choose.
+  async function send(s, e, old, nl, retry = true) {
     inflight = true;
     try {
       const r = await fetch('/edit', { method: 'POST', headers: H, body: JSON.stringify({ tick, id: bufId, s, e, old, lines: nl }) });
@@ -104,8 +106,17 @@
         return true;
       }
       tick = j.tick; bufId = j.id; lines = j.lines; pending = null; rawEdit = null;
+      const at = retry && old.length ? C.findBlock(lines, old, s) : -1;
+      inflight = false;
+      if (at >= 0) {
+        const ok = await send(at, at + old.length, old, nl, false);
+        render();
+        if (ok) status('your edit was merged with changes made in nvim');
+        return ok ? 'rebased' : false;
+      }
       render();
-      status('nvim changed first: your edit was dropped', true);
+      if (old.length) conflictDialog(s, e, nl);
+      else status('nvim changed first: your edit was dropped', true);
     } catch { status('reconnecting…', true); }
     finally { inflight = false; }
     return false;
@@ -115,7 +126,7 @@
     if (!el.isConnected) return;
     const k = el.dataset.k, [s, e] = C.span(el, lines), old = lines.slice(s, e), nl = C.build(el, lines, k);
     if (!nl || JSON.stringify(nl) === JSON.stringify(old)) { if (pending === el) pending = null; return; }
-    if (await send(s, e, old, nl)) {
+    if ((await send(s, e, old, nl)) === true) {
       const d = nl.length - (e - s);
       for (const o of doc.querySelectorAll('[data-s]')) {
         if (o === el) o.dataset.e = e + d;
@@ -270,6 +281,60 @@
     if (focus != null) focusLine(focus.line, focus.atEnd, focus.select);
   }
 
+  // ---- dialogs: edit conflicts and file-changed-on-disk -------------------------------------
+  const dlg = document.getElementById('dlg'), card = dlg.querySelector('.card');
+  const esc = t => md.utils.escapeHtml(t);
+  const closeDlg = () => { dlg.hidden = true; card.innerHTML = ''; };
+  dlg.addEventListener('click', ev => { if (ev.target === dlg) closeDlg(); });
+  function openDlg(title, bodyHtml, buttons) {
+    card.innerHTML = `<button class="close" title="Close (Esc)">×</button><h2>${esc(title)}</h2>${bodyHtml}<div class="row"></div>`;
+    card.querySelector('.close').addEventListener('click', closeDlg);
+    const row = card.querySelector('.row');
+    for (const b of buttons) {
+      const el = document.createElement('button');
+      el.textContent = b.label;
+      if (b.primary) el.className = 'primary';
+      el.addEventListener('click', async () => { if (await b.run() !== false) closeDlg(); });
+      row.append(el);
+    }
+    dlg.hidden = false;
+  }
+
+  // nvim and the page both changed this block: show both and let you pick.
+  function conflictDialog(s, e, mine) {
+    const now = lines.slice(s, Math.max(e, s));
+    openDlg('nvim changed this block too',
+      `<p>Your edit could not be applied automatically.</p><div class="cols"><div><b>Your version</b><pre>${esc(mine.join('\n'))}</pre></div><div><b>In nvim now</b><pre>${esc(now.join('\n'))}</pre></div></div>`,
+      [
+        { label: 'Keep nvim’s version', primary: true, run: () => {} },
+        { label: 'Use mine (replaces the nvim version)', run: () => structural({ s, e: Math.min(e, lines.length), lines: mine }) },
+        { label: 'Copy mine', run: async () => { try { await navigator.clipboard.writeText(mine.join('\n')); status('copied'); } catch { status('could not copy', true); } return false; } },
+      ]);
+  }
+
+  // The file changed on disk while the buffer has unsaved edits: show the difference and choose.
+  async function diskDialog() {
+    let d = { diff: '', name: name };
+    try { d = await (await fetch('/diff', { headers: H })).json(); } catch {}
+    const rows = (d.diff || '').split('\n').filter(l => !l.startsWith('@@') && l !== '').map(l => `<div class="${l[0] === '+' ? 'add' : l[0] === '-' ? 'del' : ''}">${esc(l)}</div>`).join('');
+    const resolve = choice => async () => {
+      try {
+        const r = await fetch('/resolve', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId, choice }) });
+        const j = await r.json();
+        if (!r.ok) { status(j.error || 'could not resolve', true); return false; }
+        modified = j.modified; diskChanged = false; showSaved(); tick = -1;
+        status(choice === 'keep' ? 'saved your version over the file' : 'loaded the file’s version');
+      } catch { status('reconnecting…', true); return false; }
+    };
+    openDlg(`${d.name || 'The file'} changed on disk`,
+      `<p>It changed while you have unsaved edits.</p><b>Differences</b> <small>(<span class="del">−</span> only in your buffer, <span class="add">+</span> only on disk)</small><pre class="diff">${rows || 'No line differences.'}</pre>`,
+      [
+        { label: 'Keep my version (overwrite the file)', run: resolve('keep') },
+        { label: 'Use the file’s version (discard my edits)', run: resolve('disk') },
+        { label: 'Cancel', primary: true, run: () => {} },
+      ]);
+  }
+
   // ---- fenced code, mermaid, display math: click to edit the source -----------------------
   function editRaw(el) {
     if (rawEdit || !el.isConnected) return;
@@ -371,7 +436,7 @@
     ['code', '&lt;/&gt;', 'Inline code (Cmd/Ctrl+E)'], ['link', 'Link', 'Link (Cmd/Ctrl+K)'], '|',
     ['p', '¶', 'Paragraph (Cmd/Ctrl+Alt+0)'], ['h1', 'H1', 'Heading 1 (Cmd/Ctrl+Alt+1)'], ['h2', 'H2', 'Heading 2'], ['h3', 'H3', 'Heading 3'], '|',
     ['ul', '•', 'Bullet list (Cmd/Ctrl+Shift+8)'], ['ol', '1.', 'Numbered list (Cmd/Ctrl+Shift+7)'], ['task', '☑', 'Task list (Cmd/Ctrl+Shift+9)'], '|',
-    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['save', 'Save', 'Write the file (Cmd/Ctrl+S)'], ['refresh', '↻', 'Reload from nvim and from disk'], ['theme', 'Auto', 'Theme: auto, light or dark'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
+    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['save', 'Save', 'Write the file (Cmd/Ctrl+S)'], ['resolve', 'Resolve', 'The file changed on disk: compare and choose'], ['refresh', '↻', 'Reload from nvim and from disk'], ['theme', 'Auto', 'Theme: auto, light or dark'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
   ];
   const top = document.getElementById('top');
   top.insertAdjacentHTML('afterbegin', BTN.map(b => b === '|' ? '<i class="sep"></i>' : `<button data-f="${b[0]}" title="${b[2]}">${b[1]}</button>`).join(''));
@@ -386,17 +451,19 @@
     if (f === 'theme') return setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
     if (f === 'refresh') return refresh();
     if (f === 'save') return save();
+    if (f === 'resolve') return diskDialog();
     if (f === 'undo' || f === 'redo') return nvimUndo(f);
     const el = activeBlock();
     if (!el || el.dataset.k === 'table') return status('click into a paragraph, heading or list item first', true);
     format(f, el);
   });
 
-  let modified = false;
+  let modified = false, diskChanged = false;
   const showSaved = () => {
     const b = top.querySelector('[data-f="save"]');
     b.disabled = !modified;
     b.classList.toggle('on', modified);
+    top.querySelector('[data-f="resolve"]').hidden = !diskChanged;
     document.title = (modified ? '• ' : '') + name + ' · markbridge';
   };
 
@@ -407,6 +474,7 @@
       const r = await fetch('/save', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId }) });
       const j = await r.json();
       if (r.ok) { modified = j.modified; showSaved(); status('saved ' + new Date().toLocaleTimeString()); }
+      else if (r.status === 409) diskDialog();
       else status(j.error || 'could not save', true);
     } catch { status('reconnecting…', true); }
   }
@@ -427,6 +495,7 @@
   help.addEventListener('click', ev => { if (ev.target === help || ev.target.closest('.close')) help.hidden = true; });
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && !help.hidden) help.hidden = true;
+    if (ev.key === 'Escape' && !dlg.hidden) closeDlg();
     if ((ev.metaKey || ev.ctrlKey) && ev.key === '/') { ev.preventDefault(); toggleHelp(); }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); }
     // Undo is nvim's: each browser edit is one nvim undo step, so the two stay in step.
@@ -581,7 +650,8 @@
           showSaved();
         }
         if (typeof j.modified === 'boolean' && j.modified !== modified) { modified = j.modified; showSaved(); }
-        if (j.disk_changed) status('file changed on disk, buffer has unsaved edits (nvim kept yours)', true);
+        if (!!j.disk_changed !== diskChanged) { diskChanged = !!j.disk_changed; showSaved(); }
+        if (j.disk_changed) status('file changed on disk, buffer has unsaved edits: Resolve', true);
         else if (!pending) status('synced');
         if (j.cursor && j.cursor !== lastCursor) { lastCursor = j.cursor; if (!document.activeElement.isContentEditable) scrollTo(j.cursor); }
       } catch {
@@ -592,5 +662,6 @@
     }
     setTimeout(poll, delay);
   }
+  showSaved();
   poll();
 })();

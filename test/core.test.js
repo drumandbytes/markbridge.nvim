@@ -198,3 +198,11 @@ test('block ranges exist on lists, quotes, rules and fences', () => {
   const { root } = setup('> q\n\n- a\n\n---\n\n```\nc\n```');
   for (const sel of ['blockquote', 'ul', 'hr', 'pre']) assert.ok(root.querySelector(sel).dataset.s !== undefined, sel);
 });
+
+test('findBlock re-locates an edited block after nvim moved it', () => {
+  const ls = ['x', '# T', '', 'para', '', 'para', 'z'];
+  assert.equal(C.findBlock(ls, ['para'], 5), 5);
+  assert.equal(C.findBlock(ls, ['para'], 2), 3, 'nearest of several');
+  assert.equal(C.findBlock(ls, ['# T', ''], 0), 1);
+  assert.equal(C.findBlock(ls, ['gone'], 0), -1);
+});

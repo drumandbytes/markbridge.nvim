@@ -120,19 +120,26 @@ byte untouched. Inside it:
   characters get escaped (`2 * 3` becomes `2 \* 3`).
 - Tables are re-padded and aligned; column alignment (`:--`, `:-:`, `--:`) is kept.
 
-## Staying in sync
+## Staying in sync and resolving conflicts
 
-- **nvim wins.** Each browser edit carries the buffer's change tick and the lines it
-  replaces. If you changed the buffer first, the edit is rejected, the page reloads from
-  nvim and says so. Nothing is merged and nothing is clobbered.
+Neovim's buffer is the source of truth, and nothing is overwritten without you choosing it.
+
+- **You edit in the page while nvim changed something else.** The page reloads from nvim and
+  re-applies your edit where its block now is (it finds the block's lines again). Nothing to do.
+- **You edit a block that nvim changed too.** A dialog shows your version next to nvim's. Pick
+  *Keep nvim's version*, *Use mine* (replaces nvim's lines for that block) or *Copy mine*.
+- **The file changed on disk (another tool, another person, an AI agent) while the buffer has
+  unsaved edits.** Nvim keeps your buffer, the page shows a **Resolve** button (it also opens when
+  you press Save), and the dialog lists the differences (`-` only in your buffer, `+` only on disk).
+  Choose *Keep my version* (writes the buffer over the file), *Use the file's version* (reloads the
+  file, discarding your edits; undoable in nvim) or *Cancel*.
+- **The file changed on disk and the buffer is clean:** a file watcher runs `:checktime`, so the
+  buffer reloads and the page follows.
 - **Undo.** One browser edit is one undo step in nvim.
-- **Saving.** Browser edits modify the buffer. Save from the page (button or Cmd/Ctrl+S) or `:w` in nvim. The page won't write over a file that changed on disk: it says so and leaves the decision to you in nvim (`:w!` or `:e!`). A buffer without a file name needs `:w <name>` first.
-- **Files changed outside nvim** (another tool, another person, an AI agent): a file
-  watcher runs `:checktime`, so an unmodified buffer reloads and the page updates. A
-  buffer with unsaved edits is never touched: nvim keeps yours and the page shows a
-  notice.
-- **Several buffers.** With `follow` the preview retargets to whichever markdown buffer
-  you enter. Closing the previewed buffer stops the server.
+- **Saving.** Browser edits modify the buffer. Save from the page (button or Cmd/Ctrl+S) or `:w`
+  in nvim. A buffer without a file name needs `:w <name>` first.
+- **Several buffers.** With `follow` the preview retargets to whichever markdown buffer you
+  enter. Closing the previewed buffer stops the server.
 
 ## Security
 
