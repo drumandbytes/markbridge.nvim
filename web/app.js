@@ -593,6 +593,9 @@
       + ((k === 'p' || k === 'h') && target.dataset.l === '0' ? part('Turn into', TURN, 'turn') : '')
       + part('Insert below', INSERT, 'ins');
     menu.hidden = false;
+    // Keep the whole menu on screen: it opens downwards, and slides up when the block is low on the page.
+    const r = hnd.getBoundingClientRect();
+    menu.style.top = Math.max(Math.min(24, innerHeight - r.top - menu.offsetHeight - 8), 52 - r.top) + 'px';
   });
 
   menu.addEventListener('click', ev => {

@@ -88,9 +88,16 @@
   #bar { order: 99; min-width: 0; max-width: 40vw; margin-left: auto; padding-left: 12px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); white-space: nowrap; }
   #bar.warn { color: var(--warn); }
 
+  @media (max-width: 720px) {
+    #top { overflow-x: auto; scrollbar-width: none; }
+    #top button { flex: none; }
+    #bar { position: fixed; left: 12px; bottom: 12px; z-index: 10; max-width: calc(100vw - 24px); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper-2); }
+    #bar:empty { display: none; }
+  }
+
   /* Table buttons and block handle */
   #tbl { position: absolute; display: flex; gap: 4px; font-size: 12px; }
-  #tbl[hidden], #hnd[hidden], #menu[hidden], #help[hidden] { display: none; }
+  #tbl[hidden], #hnd[hidden], #menu[hidden], .modal[hidden] { display: none; }
   #tbl button { padding: 2px 8px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); cursor: pointer; }
   #tbl button:hover { border-color: var(--ring); }
   #hnd { position: absolute; z-index: 5; font-size: 12px; }
