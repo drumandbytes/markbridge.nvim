@@ -32,7 +32,7 @@ Health: `:checkhealth markbridge`
 
 >lua
     require('markbridge').setup {
-      port = 0,            -- 0 = a free port; set one to keep the same URL
+      port = 6274,         -- preferred port; a free one is used if it is busy (0 = always a free one)
       open = true,         -- open the browser on start; or a function(url)
       follow = true,       -- retarget when you enter another markdown buffer
       scroll_sync = true,  -- scroll the page to the block under the cursor
@@ -84,7 +84,7 @@ buffer reloads, a modified one is never touched and the page shows a notice.
 ==============================================================================
 5. SECURITY                                                *markbridge-security*
 
-The server listens on 127.0.0.1 only. Requests need a random per-session token
+The server listens on 127.0.0.1 only (port 6274 by default, a free one if busy). Requests need a random per-session token
 (an `X-Token` header; the page URL carries it). It stops with `:Markbridge
 stop`, when the previewed buffer is closed, or when Neovim exits.
 

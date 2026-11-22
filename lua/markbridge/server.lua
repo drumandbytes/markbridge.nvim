@@ -27,17 +27,28 @@ local function json(client, status, tbl) respond(client, status, 'application/js
 
 -- Parses one request, then calls on_request(client, req). `st` is the plugin state table.
 function M.listen(st, on_request)
-  local server = uv.new_tcp()
-  local ok, err = server:bind('127.0.0.1', st.port or 0)
-  if not ok then
-    server:close()
-    return nil, err
+  -- A busy preferred port falls back to a free one (the caller is told which it got).
+  local function try(port)
+    local s = uv.new_tcp()
+    local ok = s:bind('127.0.0.1', port)
+    if ok then ok = s:listen(32, function(e) st.accept(s, e) end) end
+    if not ok then
+      s:close()
+      return nil
+    end
+    return s
   end
+  local server = try(st.port or 0)
+  if not server and (st.port or 0) ~= 0 then
+    server = try(0)
+    st.fell_back = true
+  end
+  if not server then return nil, 'cannot listen on 127.0.0.1' end
   st.clients = {}
-  server:listen(32, function(e)
-    if e or st.server ~= server then return end
+  st.accept = function(srv, e)
+    if e or st.server ~= srv then return end
     local client = uv.new_tcp()
-    server:accept(client)
+    srv:accept(client)
     st.clients[client] = true
     local buf = ''
     client:read_start(function(rerr, chunk)
@@ -65,7 +76,7 @@ function M.listen(st, on_request)
         body = buf:sub(hend + 4, hend + 3 + len),
       })
     end)
-  end)
+  end
   return server
 end
 

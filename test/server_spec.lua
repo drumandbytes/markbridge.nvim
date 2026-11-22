@@ -165,6 +165,23 @@ vim.fn.writefile({ 'from disk', 'b', 'c' }, md3)
 http('POST', '/refresh', {})
 check('refresh re-reads the file', wait(function() return vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'from disk' end))
 
+-- preferred port: used when free, replaced by a free one when busy
+mb.stop()
+local blocker = vim.uv.new_tcp()
+blocker:bind('127.0.0.1', 0)
+local busy = blocker:getsockname().port
+mb.config.port = busy
+mb.start()
+local got = tonumber(mb.url():match ':(%d+)/')
+check('busy preferred port falls back', mb.is_running() and got ~= busy and got > 0, { busy, got })
+mb.stop()
+blocker:close()
+vim.wait(100)
+mb.config.port = busy
+mb.start()
+check('free preferred port is used', tonumber(mb.url():match ':(%d+)/') == busy)
+mb.stop()
+
 -- stop
 vim.cmd 'bwipeout!'
 check('server stops when previewed buffer dies', true)

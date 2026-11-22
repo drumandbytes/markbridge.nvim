@@ -59,7 +59,7 @@ vim.keymap.set('n', '<leader>mp', '<Cmd>Markbridge toggle<CR>', { desc = 'Markdo
 
 ```lua
 require('markbridge').setup {
-  port = 0,            -- 0 = a free port; set one to keep the same URL between sessions
+  port = 6274,         -- preferred port; a free one is used if it is busy. 0 = always a free one
   open = true,         -- open the browser on start; or a function(url)
   follow = true,       -- retarget when you enter another markdown buffer
   scroll_sync = true,  -- scroll the page to the block under the nvim cursor
@@ -136,7 +136,7 @@ byte untouched. Inside it:
 
 ## Security
 
-The server binds to `127.0.0.1` only, on a random port (the page opens at `http://markbridge.localhost:<port>`, which browsers resolve to the loopback themselves; set `friendly_url = false` for the bare IP). Every request that reads or
+The server binds to `127.0.0.1` only, on port 6274, or a free port when that is busy (a second Neovim gets its own; the page opens at `http://markbridge.localhost:<port>`, which browsers resolve to the loopback themselves; set `friendly_url = false` for the bare IP). Every request that reads or
 writes the buffer needs a random per-session token in an `X-Token` header (a custom
 header, so another website can't send it cross-origin), and the page URL carries the
 token. Requests must carry our own `Host`, which is `<label>.localhost`, `localhost` or `127.0.0.1` on our port (a DNS-rebinding defence). Images are served
