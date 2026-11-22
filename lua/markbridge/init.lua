@@ -8,14 +8,29 @@ local M = {}
 ---@field follow boolean retarget the preview when you enter another markdown buffer
 ---@field scroll_sync boolean scroll the page to the block under the nvim cursor
 ---@field watch boolean reload the buffer when the file changes on disk (never over unsaved edits)
+---@field theme 'auto'|'light'|'dark' page theme; auto follows the OS. The page's own button overrides it per browser
 ---@field images_dir string folder, relative to the markdown file, where pasted images are saved
-M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true, images_dir = 'assets' }
+M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', images_dir = 'assets' }
 
 local S -- running state
 
 local AUG = 'markbridge'
 
-function M.setup(opts) M.config = vim.tbl_deep_extend('force', M.config, opts or {}) end
+local THEMES = { auto = true, light = true, dark = true }
+
+function M.setup(opts)
+  M.config = vim.tbl_deep_extend('force', M.config, opts or {})
+  if not THEMES[M.config.theme] then
+    vim.notify(("markbridge: theme must be auto, light or dark, got '%s'"):format(tostring(M.config.theme)), vim.log.levels.WARN)
+    M.config.theme = 'auto'
+  end
+end
+
+---Set the page's default theme; open pages adopt it on their next poll.
+function M.set_theme(theme)
+  if not THEMES[theme] then return vim.notify('markbridge: theme must be auto, light or dark', vim.log.levels.ERROR) end
+  M.config.theme = theme
+end
 
 function M.is_running() return S ~= nil end
 
@@ -110,6 +125,7 @@ local function handle(client, req)
     end
     local snap = snapshot(buf)
     local extra = {
+      theme = M.config.theme,
       cursor = M.config.scroll_sync and S.cursor or nil,
       disk_changed = (S.disk_changed and vim.bo[buf].modified) or nil,
     }

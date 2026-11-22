@@ -27,3 +27,4 @@ e8d885505949f3a5f4abdd5dd0d53696bd1371ad26ffbf4f310dcd77c8cdae89  ./katex/katex.
 84486c9d5a51b28aa90c5a3cb2625473dbde2415e2e106f8f40ea617de66dae0  ./markdown-it-emoji.min.js
 38c70a1e7ca91ab40e2d9e6e60129851a717ed1c7d4acbbdd41bf9503791cf68  ./markdown-it.min.js
 a43bc1afd446f9c4cc66ac5dd45d02e8d65e26fc5344ec0ef787f88d6ddb6f9e  ./mermaid.min.js
+fcebdac17e6dc9394c2ee1e73c8652402ee79c8ba85db0f749c101f66ed473d7  ./github-markdown.themed.css

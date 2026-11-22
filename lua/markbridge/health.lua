@@ -6,7 +6,7 @@ function M.check()
 
   local root = require('markbridge.server').ROOT
   local missing = {}
-  for _, f in ipairs { 'web/index.html', 'web/core.js', 'web/app.js', 'vendor/markdown-it.min.js', 'vendor/markdown-it-emoji.min.js', 'vendor/katex/katex.min.js', 'vendor/highlight/highlight.min.js', 'vendor/mermaid.min.js' } do
+  for _, f in ipairs { 'web/index.html', 'web/core.js', 'web/app.js', 'vendor/github-markdown.themed.css', 'vendor/markdown-it.min.js', 'vendor/markdown-it-emoji.min.js', 'vendor/katex/katex.min.js', 'vendor/highlight/highlight.min.js', 'vendor/mermaid.min.js' } do
     if not vim.uv.fs_stat(root .. '/' .. f) then missing[#missing + 1] = f end
   end
   if #missing == 0 then vim.health.ok 'web assets present' else vim.health.error('missing assets: ' .. table.concat(missing, ', '), 'Reinstall the plugin, or run scripts/vendor.sh in its directory') end

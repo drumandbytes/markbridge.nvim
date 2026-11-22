@@ -45,6 +45,7 @@ Any plugin manager works; there is nothing to build. Then open a markdown file a
 | `:Markbridge stop` | Stop the server |
 | `:Markbridge url` | Print the URL (it contains a per-session token) |
 | `:Markbridge status` | Running or stopped |
+| `:Markbridge theme [auto\|light\|dark]` | Show or set the page's default theme; open pages adopt it right away |
 
 Lua: `require('markbridge').start() / .stop() / .toggle() / .url() / .is_running()`.
 
@@ -63,9 +64,18 @@ require('markbridge').setup {
   follow = true,       -- retarget when you enter another markdown buffer
   scroll_sync = true,  -- scroll the page to the block under the nvim cursor
   watch = true,        -- reload the buffer when the file changes on disk
+  theme = 'auto',      -- page theme: 'auto' (follow the OS), 'light' or 'dark'
   images_dir = 'assets', -- where pasted images go, relative to the markdown file
 }
 ```
+
+### Theme
+
+The page has three themes: auto (follows the OS and switches with it), light and dark. The
+`theme` option sets the default; the **Auto / Light / Dark** button in the top bar cycles it and
+the choice is remembered in that browser. `:Markbridge theme dark` (or changing the option) wins
+again whenever it changes, so your Neovim config stays the default of record. Mermaid diagrams and
+code highlighting follow the theme.
 
 ## What you can edit in the browser
 
