@@ -61,9 +61,8 @@ test('unsafe constructs stay read-only', () => {
   }
 });
 
-test('code, fences and setext headings are not editable', () => {
-  const { blocks } = setup('```js\nx\n```\n\nSetext\n======\n\n    indented');
-  assert.equal(blocks.length, 0);
+test('setext headings and indented code are not editable', () => {
+  assert.equal(setup('Setext\n======\n\n    indented').blocks.length, 0);
 });
 
 test('editing a paragraph keeps soft wraps and rewrites changed text', () => {
@@ -147,4 +146,55 @@ test('a table can lose its only body row and keeps its last column', () => {
   assert.equal(C.tableOps.delCol(el, 0), null);
   C.tableOps.delRow(el, 1);
   assert.deepEqual(C.build(el, lines, 'table'), ['| a   |', '| --- |']);
+});
+
+function el0(src, sel) {
+  const r = setup(src);
+  return { ...r, el: r.root.querySelector(sel) };
+}
+
+test('fenced code and mermaid are editable raw blocks, display math too', () => {
+  const { lines, blocks } = setup('```js\nlet a = 1\n```\n\n```mermaid\ngraph TD; A-->B\n```\n\n$$\nx^2\n$$');
+  assert.deepEqual(blocks.map(b => b.k), ['fence', 'fence', 'math']);
+  const old = lines.slice(0, 3);
+  assert.equal(C.rawBody(old), 'let a = 1');
+  assert.deepEqual(C.buildRaw(old, 'let b = 2\nlet c'), ['```js', 'let b = 2', 'let c', '```']);
+  assert.deepEqual(C.buildRaw(old, ''), ['```js', '```']);
+});
+
+test('fences inside lists and quotes keep their prefix; unclosed and indented code stay read-only', () => {
+  const q = setup('> ```\n> a\n> ```');
+  const f = q.blocks.find(b => b.k === 'fence');
+  assert.ok(f);
+  assert.deepEqual(C.buildRaw(q.lines, 'b'), ['> ```', '> b', '> ```']);
+  assert.equal(setup('```\nopen forever').blocks.length, 0);
+  assert.equal(setup('    indented\n').blocks.length, 0);
+});
+
+test('convert paragraph to heading, list, and back out of a list', () => {
+  let r = el0('plain text', 'p');
+  assert.deepEqual(C.convertBlock(r.el, r.lines, 'p', 'h3'), { s: 0, e: 1, lines: ['### plain text'] });
+  assert.deepEqual(C.convertBlock(r.el, r.lines, 'p', 'task').lines, ['- [ ] plain text']);
+  r = el0('intro\n\n- a\n- b\n- c', 'li:nth-child(2)');
+  const out = C.convertBlock(r.el, r.lines, 'li', 'p');
+  assert.deepEqual(out, { s: 3, e: 4, lines: ['', 'b', ''] });
+  assert.equal(C.convertBlock(setup('> quoted').root.querySelector('p'), ['> quoted'], 'p', 'h2'), null, 'only top level');
+});
+
+test('swap and delete blocks keep spacing', () => {
+  const lines = ['# A', '', 'para', '', '- x'];
+  assert.deepEqual(C.swapBlocks(lines, [4, 5], [2, 3]).lines, ['- x', '', 'para']);
+  assert.deepEqual(C.swapBlocks(lines, [2, 3], [0, 1]), { s: 0, e: 3, old: ['# A', '', 'para'], lines: ['para', '', '# A'] });
+  assert.deepEqual(C.deleteBlock(lines, [2, 3]), { s: 2, e: 4, old: ['para', ''], lines: [] });
+  assert.deepEqual(C.deleteBlock(lines, [4, 5]), { s: 3, e: 5, old: ['', '- x'], lines: [] });
+});
+
+test('frontmatter fields: flat scalars editable, lists and blocks read-only', () => {
+  const f = C.frontmatterFields(['---', 'title: Hello', 'tags:', '  - a', 'draft: true', 'desc: |', '  long', '---', '# x']);
+  assert.deepEqual(f.map(x => [x.key, x.editable]), [['title', true], ['tags', false], [null, false], ['draft', true], ['desc', false], [null, false]]);
+});
+
+test('block ranges exist on lists, quotes, rules and fences', () => {
+  const { root } = setup('> q\n\n- a\n\n---\n\n```\nc\n```');
+  for (const sel of ['blockquote', 'ul', 'hr', 'pre']) assert.ok(root.querySelector(sel).dataset.s !== undefined, sel);
 });

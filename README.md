@@ -58,6 +58,7 @@ require('markbridge').setup {
   follow = true,       -- retarget when you enter another markdown buffer
   scroll_sync = true,  -- scroll the page to the block under the nvim cursor
   watch = true,        -- reload the buffer when the file changes on disk
+  images_dir = 'assets', -- where pasted images go, relative to the markdown file
 }
 ```
 
@@ -65,12 +66,26 @@ require('markbridge').setup {
 
 | Block | Editing |
 | --- | --- |
-| Paragraphs, headings (`#`), list items, task items, table cells, also inside quotes and lists | Type, use Cmd/Ctrl+B and I, paste (plain text), click a task checkbox |
+| Paragraphs, headings (`#`), list items, task items, table cells, also inside quotes and lists | Type, use the shortcuts below, paste (plain text), click a task checkbox |
+| Fenced code, mermaid, `$$` math | Click to open the source in a text box; the page re-renders when you leave it (Esc) |
+| Frontmatter | Flat `key: value` lines are fields at the top of the page; lists and block values are shown read-only |
 | Enter | Splits the block at the caret; at the end it opens an empty block below (paragraph, list item). In a table cell Enter and Tab move between cells; Tab in the last cell adds a row |
 | Table structure | Buttons above the focused table: `+ row`, `+ col` (after the current cell), `- row`, `- col` (the header row and the last column stay) |
+| Images | Paste (or drop) an image into a paragraph: it is saved to `assets/` next to the file (`images_dir`) and linked |
 | Shift+Enter | Hard line break |
-| Code blocks, fenced mermaid, display math, HTML blocks, setext headings, frontmatter | Read-only (rendered, not editable) |
-| Paragraphs with reference links, footnotes or `<https://...>` autolinks | Read-only: they can't be rebuilt faithfully from the page |
+
+Not editable: HTML blocks, indented code, setext headings (`Title` over `====`), paragraphs with
+reference links, footnotes or `<https://...>` autolinks (they can't be rebuilt faithfully from the page).
+
+**Shortcuts** (Cmd on macOS, Ctrl elsewhere): `Alt+0` to `Alt+6` paragraph or heading level,
+`Shift+7` / `Shift+8` / `Shift+9` numbered, bullet and task list (top-level blocks), `E` inline code,
+`K` link, `Shift+X` strikethrough, `B` and `I` bold and italic.
+
+**Block menu.** Hover a top-level block and use the handle on its left: move up or down, delete,
+turn a paragraph or heading into another kind, insert a paragraph, heading, list, quote, code,
+mermaid, math, table or divider below.
+
+**Click to jump.** Clicking a block in the page moves the nvim cursor to its first line.
 
 Inline math (`$x$`), emoji (`:smile:`) and inline HTML round-trip: editing the text
 around them writes their source back unchanged.
@@ -103,7 +118,8 @@ byte untouched. Inside it:
 The server binds to `127.0.0.1` only, on a random port. Every request that reads or
 writes the buffer needs a random per-session token in an `X-Token` header (a custom
 header, so another website can't send it cross-origin), and the page URL carries the
-token. Stop it with `:Markbridge stop`, by closing the buffer, or by quitting Neovim.
+token. Requests must carry our own `Host` (a DNS-rebinding defence). Images are served
+only from the previewed file's folder, with a same-origin resource policy. Stop it with `:Markbridge stop`, by closing the buffer, or by quitting Neovim.
 
 ## Health, docs, troubleshooting
 

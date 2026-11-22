@@ -32,7 +32,19 @@
       }
       return self.renderToken(tokens, i, opts, env, self);
     };
-    for (const r of ['paragraph_open', 'heading_open', 'list_item_open', 'table_open']) md.renderer.rules[r] = mark;
+    for (const r of ['paragraph_open', 'heading_open', 'list_item_open', 'table_open', 'blockquote_open', 'bullet_list_open', 'ordered_list_open']) {
+      md.renderer.rules[r] = mark;
+    }
+    // Self-contained blocks render their own HTML; add the same attributes to its first tag.
+    const tag = (rule, re) => {
+      const base = md.renderer.rules[rule] || ((t, i, o, e, self) => self.renderToken(t, i, o));
+      md.renderer.rules[rule] = (t, i, o, e, self) => {
+        const html = base(t, i, o, e, self), m = t[i].map;
+        return m ? html.replace(re, `$& data-s="${m[0]}" data-e="${m[1]}" data-l="${t[i].level}"`) : html;
+      };
+    };
+    tag('fence', /^<pre/);
+    tag('hr', /^<hr/);
 
     if (deps.emoji) {
       md.use(deps.emoji);
@@ -87,7 +99,10 @@
       state.line = next + 1;
       return true;
     }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
-    md.renderer.rules.mb_math_block = t => `<div>${render(t.content, true)}</div>\n`;
+    md.renderer.rules.mb_math_block = (tokens, i) => {
+      const t = tokens[i];
+      return `<div data-raw="math" data-s="${t.map[0]}" data-e="${t.map[1]}" data-l="${t.level}">${render(t.content, true)}</div>\n`;
+    };
   }
 
   // Trailing blank lines in markdown-it's range are not part of the block.
@@ -111,9 +126,35 @@
       case 'LI':
         return ITEM.test(old[0] || '') && [...el.children].every(c => !BLOCKY.test(c.tagName)) ? 'li' : null;
       case 'TABLE': return /^\s*\|?.*\|/.test(rest0) ? 'table' : null;
+      case 'PRE': return rawParts(old) ? 'fence' : null;
+      case 'DIV': return el.dataset.raw === 'math' && rawParts(old) ? 'math' : null;
     }
     return null;
   }
+
+  // Fenced code and $$ math: opening line, body, closing line. Null when it isn't a closed block.
+  function rawParts(old) {
+    if (old.length < 2) return null;
+    const pfx = old[0].match(/^(?:[ \t]*>[ \t]?)*[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?/)[0];
+    const head = old[0].slice(pfx.length), cont = contPrefix(pfx);
+    const stripQuote = l => l.replace(/^(?:[ \t]*>[ \t]?)*/, '');
+    let closeRe;
+    if (/^(`{3,}|~{3,})/.test(head)) {
+      const f = head.match(/^(`{3,}|~{3,})/)[1];
+      closeRe = new RegExp('^\\s*' + (f[0] === '`' ? '`' : '~') + '{' + f.length + ',}\\s*$');
+    } else if (head.trim() === '$$') closeRe = /^\s*\$\$\s*$/;
+    else return null;
+    const last = old[old.length - 1];
+    if (!closeRe.test(stripQuote(last).slice(cont.length > 0 && stripQuote(last).startsWith(cont) ? cont.length : 0))) return null;
+    const unpad = l => (l.startsWith(cont) ? l.slice(cont.length) : l);
+    return { open: old[0], close: last, cont, body: old.slice(1, -1).map(l => unpad(l.startsWith(pfx) ? l : l)) };
+  }
+
+  const rawBody = old => (rawParts(old) || { body: [] }).body.join('\n');
+  const buildRaw = (old, text) => {
+    const p = rawParts(old);
+    return [p.open, ...(text === '' ? [] : text.split('\n').map(l => p.cont + l)), p.close];
+  };
 
   const escText = (t, inTable) => {
     let o = t.replace(/\u00a0/g, ' ').replace(/([\\`*])/g, '\\$1')
@@ -133,7 +174,7 @@
       switch (n.tagName) {
         case 'STRONG': case 'B': o += wrap('**'); break;
         case 'EM': case 'I': o += wrap('*'); break;
-        case 'DEL': case 'S': o += wrap('~~'); break;
+        case 'DEL': case 'S': case 'STRIKE': o += wrap('~~'); break;
         case 'CODE': {
           let t = n.textContent;
           if (inTable) t = t.replace(/\|/g, '\\|');
@@ -278,8 +319,60 @@
     }
   }
 
+  // Turn a top-level paragraph/heading/list item into another kind: to is p, h1-h6, ul, ol, task.
+  function convertBlock(el, lines, k, to) {
+    if (el.dataset.l !== (k === 'li' ? '1' : '0') || !['p', 'h', 'li'].includes(k)) return null; // top level only
+    const [s, e] = span(el, lines);
+    const text = clean(inl(el, false)).replace(/\s*\n\s*/g, ' ');
+    if (!text) return null;
+    const head = /^h[1-6]$/.test(to) ? '#'.repeat(+to[1]) + ' ' : to === 'ul' ? '- ' : to === 'ol' ? '1. ' : to === 'task' ? '- [ ] ' : '';
+    let out = [head + text];
+    if (k === 'li' && !head.startsWith('-') && !/^\d/.test(head)) { // out of a list: keep it from merging back in
+      if (s > 0 && lines[s - 1].trim() !== '') out.unshift('');
+      if (e < lines.length && lines[e].trim() !== '') out.push('');
+    }
+    if (k !== 'li' && head && /^(?:- |1\. )/.test(head)) out = [head + text];
+    return { s, e, lines: out };
+  }
+
+  // Swap block A (later) with the block B before it, keeping the blank gap between them in place.
+  function swapBlocks(lines, a, b) {
+    const gap = lines.slice(b[1], a[0]);
+    return { s: b[0], e: a[1], old: lines.slice(b[0], a[1]), lines: [...lines.slice(a[0], a[1]), ...gap, ...lines.slice(b[0], b[1])] };
+  }
+
+  // Remove a block and the blank run after it (or before it at the end of the file).
+  function deleteBlock(lines, range) {
+    let [s, e] = range;
+    const n = lines.length;
+    let e2 = e;
+    while (e2 < n && lines[e2].trim() === '') e2++;
+    if (e2 === e && e2 >= n) while (s > 0 && lines[s - 1].trim() === '') s--;
+    else e = e2;
+    return { s, e, old: lines.slice(s, e), lines: [] };
+  }
+
+  const TEMPLATES = {
+    p: ['New paragraph'], h2: ['## Heading'], ul: ['- Item'], ol: ['1. Item'], task: ['- [ ] Task'], quote: ['> Quote'],
+    code: ['```', 'code', '```'], mermaid: ['```mermaid', 'graph TD; A-->B', '```'], math: ['$$', 'x^2', '$$'],
+    table: ['| a   | b   |', '| --- | --- |', '|     |     |'], hr: ['---'],
+  };
+
+  // Flat `key: value` frontmatter lines the page can edit; anything else is shown read-only.
+  function frontmatterFields(lines) {
+    const end = frontmatterEnd(lines);
+    const out = [];
+    for (let i = 1; i < end - 1; i++) {
+      const m = lines[i].match(/^([A-Za-z0-9_-]+):[ \t]*(.*)$/);
+      const next = lines[i + 1] || '';
+      const scalar = m && !/^[|>&*!\[{]/.test(m[2]) && !(m[2] === '' && /^\s+\S|^\s*-\s/.test(next));
+      out.push({ i, key: m ? m[1] : null, value: m ? m[2] : lines[i], editable: !!scalar });
+    }
+    return out;
+  }
+
   // Markdown for a DOM range/fragment (used to split a block at the caret).
   const fragmentToMd = frag => clean(inl(frag, false));
 
-  return { tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
+  return { rawParts, rawBody, buildRaw, convertBlock, swapBlocks, deleteBlock, TEMPLATES, frontmatterFields, tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
 });

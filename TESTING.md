@@ -15,6 +15,12 @@ mermaid block and some math:
 - [ ] Enter in the middle of a paragraph splits it; at the end of a list item opens a new item; at the end of a paragraph opens an empty block that is written on the first keystroke
 - [ ] Tab / Enter move between table cells; Shift+Tab goes back
 - [ ] Table buttons (+/- row, +/- col) and Tab in the last cell change the table; column alignment stays with its column
+- [ ] Click a code block, a mermaid diagram and a `$$` block: the source opens, edits reach nvim, Esc re-renders
+- [ ] Frontmatter field edits reach nvim; list-valued fields stay read-only
+- [ ] Block handle: move up/down, delete, turn into, insert below (all kinds), each one undo step in nvim
+- [ ] Shortcuts: Cmd/Ctrl+Alt+1..6 and 0, Shift+7/8/9, E, K, Shift+X
+- [ ] Paste a screenshot into a paragraph: file appears under assets/, image shows, markdown link written
+- [ ] Click a block: the nvim cursor moves to its first line
 - [ ] Clicking a checkbox toggles `[ ]` / `[x]`
 - [ ] IME composition (for example Japanese or Chinese input) does not split or commit mid-composition
 - [ ] Backspace at the start and end of a block does not merge or delete neighbours

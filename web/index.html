@@ -21,6 +21,25 @@
   #tbl[hidden] { display: none; }
   #tbl button { border: 1px solid rgba(128,128,128,.4); background: var(--bg); color: var(--fg); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
   #tbl button:hover { border-color: var(--ring); }
+  .mb-raw { cursor: text; }
+  .mb-raw:hover { box-shadow: 0 0 0 2px rgba(128,128,128,.25); border-radius: 4px; }
+  textarea.mb-raw-edit { display: block; width: 100%; box-sizing: border-box; min-height: 3em; padding: 12px; margin: 0 0 16px; border: 0; border-radius: 6px; background: rgba(128,128,128,.12); color: var(--fg); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; resize: none; outline: 2px solid var(--ring); }
+  .mb-fm { margin: 0 0 20px; padding: 8px 12px; border: 1px solid rgba(128,128,128,.3); border-radius: 6px; font-size: 13px; }
+  .mb-fm label { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
+  .mb-fm span { min-width: 7em; opacity: .6; }
+  .mb-fm input { flex: 1; border: 0; background: transparent; color: var(--fg); font: inherit; outline: none; border-bottom: 1px solid transparent; }
+  .mb-fm input:focus { border-bottom-color: var(--ring); }
+  .mb-fm .ro { opacity: .5; font-family: ui-monospace, monospace; white-space: pre; }
+  .markdown-body img { max-width: 100%; }
+  #hnd { position: absolute; font: 12px system-ui, sans-serif; z-index: 5; }
+  #hnd[hidden] { display: none; }
+  #hnd > button { border: 0; background: transparent; color: var(--fg); opacity: .35; cursor: pointer; border-radius: 4px; padding: 2px 4px; }
+  #hnd > button:hover { opacity: 1; background: rgba(128,128,128,.2); }
+  #menu { position: absolute; left: 0; top: 24px; width: 180px; max-height: 70vh; overflow: auto; background: var(--bg); border: 1px solid rgba(128,128,128,.4); border-radius: 6px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  #menu[hidden] { display: none; }
+  #menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--fg); padding: 4px 8px; border-radius: 4px; cursor: pointer; font: inherit; }
+  #menu button:hover { background: rgba(56,139,253,.2); }
+  #menu h6 { margin: 6px 8px 2px; font-size: 11px; opacity: .5; text-transform: uppercase; }
   #bar { position: fixed; right: 12px; bottom: 8px; font: 12px/1.4 system-ui, sans-serif; opacity: .65; color: gray; }
   #bar.warn { color: var(--note); opacity: 1; }
 </style>
