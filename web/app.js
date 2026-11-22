@@ -42,7 +42,10 @@
       const k = C.kind(el, lines);
       if (!k) continue;
       el.dataset.k = k;
-      if (k === 'table') for (const c of el.querySelectorAll('th, td')) c.contentEditable = 'true';
+      if (k === 'table') {
+        C.tableAlign(el, lines.slice(+el.dataset.s, +el.dataset.e));
+        for (const c of el.querySelectorAll('th, td')) c.contentEditable = 'true';
+      }
       else el.contentEditable = 'true';
     }
     mermaid.run({ querySelector: '.language-mermaid' }).catch(() => {});
@@ -168,6 +171,7 @@
     if (cell && (ev.key === 'Enter' || ev.key === 'Tab')) { // move between cells, not into new lines
       ev.preventDefault();
       const cells = [...el.querySelectorAll('th, td')], i = cells.indexOf(cell), n = el.rows[0].cells.length;
+      if (ev.key === 'Tab' && !ev.shiftKey && i === cells.length - 1) return tableOp('addRow', cell); // Tab past the end adds a row
       const next = ev.key === 'Tab' ? cells[i + (ev.shiftKey ? -1 : 1)] : cells[i + n];
       if (next) { next.focus(); getSelection().selectAllChildren(next); }
       return;
@@ -190,6 +194,41 @@
     const g = ev.target.closest && ev.target.closest('[data-ghost]');
     if (g) { if (g.textContent.trim()) queue = queue.then(() => commitGhost(g)); else g.remove(); }
   });
+
+  // Row/column buttons under the table being edited. mousedown is cancelled so the cell keeps focus.
+  const tb = document.createElement('div');
+  tb.id = 'tbl';
+  tb.hidden = true;
+  tb.innerHTML = '<button data-op="addRow">+ row</button><button data-op="addCol">+ col</button><button data-op="delRow">- row</button><button data-op="delCol">- col</button>';
+  document.body.append(tb);
+  const cellIn = () => { const n = document.activeElement; return n && n.closest && n.closest('td, th') && n.closest('[data-k="table"]') ? n.closest('td, th') : null; };
+  function placeToolbar() {
+    const c = cellIn();
+    tb.hidden = !c;
+    if (!c) return;
+    const r = c.closest('table').getBoundingClientRect();
+    tb.style.top = r.top + scrollY - tb.offsetHeight - 2 + 'px'; // above the table: below it would cover the next block
+    tb.style.left = r.right + scrollX - tb.offsetWidth + 'px';
+  }
+  function tableOp(op, cell) {
+    const el = cell.closest('table'), row = cell.parentElement.rowIndex, col = cell.cellIndex;
+    const next = op === 'addRow' ? C.tableOps.addRow(el, row)
+      : op === 'delRow' ? C.tableOps.delRow(el, row)
+      : op === 'addCol' ? C.tableOps.addCol(el, col)
+      : C.tableOps.delCol(el, col);
+    if (!next) return;
+    next.focus();
+    pending = el;
+    flush(el);
+    placeToolbar();
+  }
+  tb.addEventListener('mousedown', ev => ev.preventDefault());
+  tb.addEventListener('click', ev => {
+    const op = ev.target.dataset && ev.target.dataset.op, c = cellIn();
+    if (op && c) tableOp(op, c);
+  });
+  document.addEventListener('focusin', placeToolbar);
+  document.addEventListener('focusout', () => setTimeout(placeToolbar, 0));
 
   function scrollTo(line) {
     let best = null;

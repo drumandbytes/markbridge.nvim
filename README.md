@@ -66,7 +66,8 @@ require('markbridge').setup {
 | Block | Editing |
 | --- | --- |
 | Paragraphs, headings (`#`), list items, task items, table cells, also inside quotes and lists | Type, use Cmd/Ctrl+B and I, paste (plain text), click a task checkbox |
-| Enter | Splits the block at the caret; at the end it opens an empty block below (paragraph, list item). In a table cell Enter and Tab move between cells |
+| Enter | Splits the block at the caret; at the end it opens an empty block below (paragraph, list item). In a table cell Enter and Tab move between cells; Tab in the last cell adds a row |
+| Table structure | Buttons above the focused table: `+ row`, `+ col` (after the current cell), `- row`, `- col` (the header row and the last column stay) |
 | Shift+Enter | Hard line break |
 | Code blocks, fenced mermaid, display math, HTML blocks, setext headings, frontmatter | Read-only (rendered, not editable) |
 | Paragraphs with reference links, footnotes or `<https://...>` autolinks | Read-only: they can't be rebuilt faithfully from the page |
@@ -82,8 +83,6 @@ byte untouched. Inside it:
 - Soft-wrapped lines are kept. Emphasis normalises to `*x*` and `**x**`, and some
   characters get escaped (`2 * 3` becomes `2 \* 3`).
 - Tables are re-padded and aligned; column alignment (`:--`, `:-:`, `--:`) is kept.
-- Rows and columns can't be added or removed in the browser yet; edit the structure in
-  nvim.
 
 ## Staying in sync
 

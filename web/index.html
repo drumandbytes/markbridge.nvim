@@ -17,6 +17,10 @@
   [data-ghost]:empty::before { content: "…"; opacity: .4; }
   .mb-frontmatter { opacity: .55; font-size: 12px; }
   .markdown-body pre code.hljs { background: transparent; }
+  #tbl { position: absolute; display: flex; gap: 4px; font: 12px system-ui, sans-serif; }
+  #tbl[hidden] { display: none; }
+  #tbl button { border: 1px solid rgba(128,128,128,.4); background: var(--bg); color: var(--fg); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+  #tbl button:hover { border-color: var(--ring); }
   #bar { position: fixed; right: 12px; bottom: 8px; font: 12px/1.4 system-ui, sans-serif; opacity: .65; color: gray; }
   #bar.warn { color: var(--note); opacity: 1; }
 </style>
