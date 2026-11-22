@@ -1,0 +1,75 @@
+*markbridge.txt*  Two-way markdown preview in the browser
+
+==============================================================================
+CONTENTS                                                    *markbridge-contents*
+
+  1. Usage ............................ |markbridge-usage|
+  2. Configuration .................... |markbridge-config|
+  3. Editing in the browser ........... |markbridge-editing|
+  4. Syncing .......................... |markbridge-sync|
+  5. Security ......................... |markbridge-security|
+
+==============================================================================
+1. USAGE                                                      *markbridge-usage*
+
+                                                                   *:Markbridge*
+:Markbridge [{sub}]
+    {sub} is one of: >
+        toggle   start, or stop when running (default)
+        start    start for the current markdown buffer, or retarget to it
+        stop     stop the server
+        url      print the URL (it contains a per-session token)
+        status   running or stopped
+<
+Lua API: `require('markbridge')`: `.start()`, `.stop()`, `.toggle()`, `.url()`,
+`.is_running()`, `.setup({opts})`.
+
+Health: `:checkhealth markbridge`
+
+==============================================================================
+2. CONFIGURATION                                             *markbridge-config*
+
+>lua
+    require('markbridge').setup {
+      port = 0,            -- 0 = a free port; set one to keep the same URL
+      open = true,         -- open the browser on start; or a function(url)
+      follow = true,       -- retarget when you enter another markdown buffer
+      scroll_sync = true,  -- scroll the page to the block under the cursor
+      watch = true,        -- reload the buffer when the file changes on disk
+    }
+<
+
+==============================================================================
+3. EDITING IN THE BROWSER                                   *markbridge-editing*
+
+Editable: paragraphs, `#` headings, list items, task items, table cells, also
+inside block quotes and lists. Read-only: code blocks, mermaid, display math,
+HTML blocks, setext headings, frontmatter, and paragraphs holding reference
+links, footnotes or autolinks.
+
+Enter splits a block at the caret, or opens an empty block below when the caret
+is at the end (paragraph, list item). In a table cell Enter and Tab move between
+cells. Shift+Enter is a hard line break. Clicking a task checkbox toggles it.
+
+An edited block is rewritten from the page; the rest of the file is untouched.
+Soft-wrapped lines are kept, emphasis normalises to `*x*` / `**x**`, some
+characters are escaped, and tables are re-padded (alignment is kept). Rows and
+columns cannot be added or removed in the browser yet.
+
+==============================================================================
+4. SYNCING                                                      *markbridge-sync*
+
+nvim wins: an edit made on a stale page is rejected and the page reloads. One
+browser edit is one undo step. Browser edits do not save the buffer.
+
+With `watch`, a change to the file on disk runs |:checktime|: an unmodified
+buffer reloads, a modified one is never touched and the page shows a notice.
+
+==============================================================================
+5. SECURITY                                                *markbridge-security*
+
+The server listens on 127.0.0.1 only. Requests need a random per-session token
+(an `X-Token` header; the page URL carries it). It stops with `:Markbridge
+stop`, when the previewed buffer is closed, or when Neovim exits.
+
+ vim:tw=78:ts=8:ft=help:norl:

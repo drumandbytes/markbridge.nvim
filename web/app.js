@@ -1,0 +1,228 @@
+(() => {
+  const C = window.MBCore;
+  const T = new URLSearchParams(location.search).get('t');
+  const H = { 'X-Token': T };
+  const doc = document.getElementById('doc'), bar = document.getElementById('bar');
+
+  let tick = -1, bufId = -1, lines = [], name = '', cursor = 0, lastCursor = 0;
+  let pending = null, timer = null, inflight = false, queue = Promise.resolve(), fails = 0;
+  let ghost = null;
+
+  const md = window.markdownit({
+    html: true,
+    highlight: (str, lang) => {
+      if (lang && hljs.getLanguage(lang)) { try { return hljs.highlight(str, { language: lang }).value; } catch {} }
+      return '';
+    },
+  });
+  C.install(md, { emoji: (window.markdownitEmoji || {}).full || window.markdownitEmoji, katex: window.katex });
+
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  const mermaidInit = () => mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark.matches ? 'dark' : 'default' });
+  mermaidInit();
+  dark.addEventListener('change', () => { mermaidInit(); render(); });
+
+  const status = (s, warn) => { bar.textContent = s; bar.className = warn ? 'warn' : ''; };
+
+  // Hide the highlight.js theme that doesn't match the colour scheme.
+  const hl = document.createElement('style');
+  document.head.append(hl);
+  const setHl = async () => {
+    const f = dark.matches ? 'github-dark' : 'github';
+    hl.textContent = await (await fetch(`/vendor/highlight/${f}.min.css`)).text();
+  };
+  setHl(); dark.addEventListener('change', setHl);
+
+  function render() {
+    const fm = C.frontmatterEnd(lines);
+    const src = lines.map((l, i) => (i < fm ? '' : l)).join('\n'); // blank, not drop: keeps line numbers aligned
+    doc.innerHTML = (fm ? `<pre class="mb-frontmatter">${md.utils.escapeHtml(lines.slice(0, fm).join('\n'))}</pre>` : '') + md.render(src);
+    C.taskify(document, doc);
+    for (const el of doc.querySelectorAll('[data-s]')) {
+      const k = C.kind(el, lines);
+      if (!k) continue;
+      el.dataset.k = k;
+      if (k === 'table') for (const c of el.querySelectorAll('th, td')) c.contentEditable = 'true';
+      else el.contentEditable = 'true';
+    }
+    mermaid.run({ querySelector: '.language-mermaid' }).catch(() => {});
+    ghost = null;
+  }
+
+  const blockOf = node => {
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return el && el.closest('[data-k]');
+  };
+
+  const flush = el => { clearTimeout(timer); timer = null; queue = queue.then(() => commit(el)); };
+
+  // Sends one edit. Resolves true when nvim applied it; on a stale edit nvim wins and the page reloads.
+  async function send(s, e, old, nl) {
+    inflight = true;
+    try {
+      const r = await fetch('/edit', { method: 'POST', headers: H, body: JSON.stringify({ tick, id: bufId, s, e, old, lines: nl }) });
+      const j = await r.json();
+      if (r.ok) {
+        lines.splice(s, e - s, ...nl);
+        tick = j.tick;
+        status('synced ' + new Date().toLocaleTimeString());
+        return true;
+      }
+      tick = j.tick; bufId = j.id; lines = j.lines; pending = null;
+      render();
+      status('nvim changed first: your edit was dropped', true);
+    } catch { status('reconnecting…', true); }
+    finally { inflight = false; }
+    return false;
+  }
+
+  async function commit(el) {
+    if (!el.isConnected) return;
+    const k = el.dataset.k, [s, e] = C.span(el, lines), old = lines.slice(s, e), nl = C.build(el, lines, k);
+    if (!nl || JSON.stringify(nl) === JSON.stringify(old)) { if (pending === el) pending = null; return; }
+    if (await send(s, e, old, nl)) {
+      const d = nl.length - (e - s);
+      for (const o of doc.querySelectorAll('[data-s]')) {
+        if (o === el) o.dataset.e = e + d;
+        else if (+o.dataset.s >= e) { o.dataset.s = +o.dataset.s + d; o.dataset.e = +o.dataset.e + d; }
+      }
+    }
+    if (pending === el && !timer) pending = null;
+  }
+
+  // Re-render from the buffer after a structural edit, then put the caret in the block at `line`.
+  function focusLine(line, atEnd) {
+    render();
+    const el = [...doc.querySelectorAll('[data-k]')].find(x => +x.dataset.s === line);
+    if (!el) return;
+    const target = el.dataset.k === 'table' ? el.querySelector('th, td') : el;
+    target.focus();
+    const sel = getSelection();
+    sel.selectAllChildren(target);
+    sel.collapse(target, atEnd ? target.childNodes.length : 0);
+  }
+
+  // Enter: split the block at the caret, or open an empty block below when the caret is at the end.
+  function enter(el) {
+    const k = el.dataset.k, top = el.dataset.l === '0';
+    if (k === 'table' || (k !== 'li' && !top)) return;
+    const [s, e] = C.span(el, lines), old = lines.slice(s, e);
+    const sel = getSelection();
+    if (!sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    const before = document.createRange(); before.selectNodeContents(el); before.setEnd(r.startContainer, r.startOffset);
+    const after = document.createRange(); after.selectNodeContents(el); after.setStart(r.endContainer, r.endOffset);
+    const b = C.fragmentToMd(before.cloneContents()), a = C.fragmentToMd(after.cloneContents());
+    if (!b) return;
+    const pfx = old[0].match(C.PREFIX)[0];
+    if (!a) {
+      const g = document.createElement(k === 'li' ? 'li' : 'p');
+      Object.assign(g.dataset, { ghost: '1', k: k === 'li' ? 'li' : 'p', s: e, e, pfx: k === 'li' ? pfx : '' });
+      g.contentEditable = 'true';
+      el.after(g);
+      ghost = g;
+      g.focus();
+      return;
+    }
+    clearTimeout(timer); timer = null; pending = null;
+    const bl = b.split('\n'), al = a.split('\n');
+    let nl, target;
+    if (k === 'li') { nl = [pfx + b, pfx + a]; target = s + 1; }
+    else if (k === 'h') { nl = [old[0].match(/^ {0,3}#{1,6}[ \t]+/)[0] + b.replace(/\s*\n\s*/g, ' '), '', ...al]; target = s + 2; }
+    else { nl = [...bl, '', ...al]; target = s + bl.length + 1; }
+    queue = queue.then(async () => { if (await send(s, e, old, nl)) focusLine(target, false); });
+  }
+
+  async function commitGhost(g) {
+    const text = C.clean(C.inl(g, false));
+    if (!text) return;
+    const at = +g.dataset.s, li = g.dataset.k === 'li';
+    const nl = li ? text.split('\n').map((l, i) => (i ? C.contPrefix(g.dataset.pfx) : g.dataset.pfx) + l) : ['', ...text.split('\n')];
+    ghost = null;
+    if (await send(at, at, [], nl)) focusLine(li ? at : at + 1, true);
+  }
+
+  let composing = false; // IME: wait for compositionend before committing
+  doc.addEventListener('compositionstart', () => { composing = true; });
+  doc.addEventListener('compositionend', ev => { composing = false; ev.target.dispatchEvent(new Event('input', { bubbles: true })); });
+
+  doc.addEventListener('input', ev => {
+    if (composing) return;
+    const g = ev.target.closest && ev.target.closest('[data-ghost]');
+    if (g) { if (g.textContent.trim()) { clearTimeout(timer); timer = setTimeout(() => queue = queue.then(() => commitGhost(g)), 500); } return; }
+    const el = blockOf(ev.target); if (!el) return;
+    if (pending && pending !== el) flush(pending);
+    pending = el; clearTimeout(timer); timer = setTimeout(() => flush(el), 500);
+  });
+
+  doc.addEventListener('change', ev => { // checkbox click = edit
+    if (ev.target.type !== 'checkbox') return;
+    if (!blockOf(ev.target)) { ev.target.checked = !ev.target.checked; return; }
+    ev.target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  doc.addEventListener('keydown', ev => {
+    const el = blockOf(ev.target);
+    if (!el) return;
+    const cell = ev.target.closest && ev.target.closest('th, td');
+    if (cell && (ev.key === 'Enter' || ev.key === 'Tab')) { // move between cells, not into new lines
+      ev.preventDefault();
+      const cells = [...el.querySelectorAll('th, td')], i = cells.indexOf(cell), n = el.rows[0].cells.length;
+      const next = ev.key === 'Tab' ? cells[i + (ev.shiftKey ? -1 : 1)] : cells[i + n];
+      if (next) { next.focus(); getSelection().selectAllChildren(next); }
+      return;
+    }
+    if (ev.key === 'Enter' && !ev.isComposing) {
+      ev.preventDefault();
+      if (!ev.shiftKey && !cell) enter(el);
+      else if (ev.shiftKey && !cell) document.execCommand('insertLineBreak');
+    }
+  });
+
+  doc.addEventListener('paste', ev => {
+    if (!blockOf(ev.target) && !ev.target.closest('[data-ghost]')) return;
+    ev.preventDefault();
+    document.execCommand('insertText', false, ev.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' '));
+  });
+
+  doc.addEventListener('focusout', ev => {
+    if (timer && pending) flush(pending);
+    const g = ev.target.closest && ev.target.closest('[data-ghost]');
+    if (g) { if (g.textContent.trim()) queue = queue.then(() => commitGhost(g)); else g.remove(); }
+  });
+
+  function scrollTo(line) {
+    let best = null;
+    for (const el of doc.querySelectorAll('[data-s]')) if (+el.dataset.s <= line - 1) best = el; else break;
+    if (best) best.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  async function poll() {
+    let delay = 500;
+    if (!pending && !inflight && !ghost) {
+      try {
+        const r = await fetch(`/state?tick=${tick}&id=${bufId}`, { headers: H });
+        if (r.status === 410) return status('buffer closed in nvim: preview stopped', true);
+        if (r.status === 403) return status('token rejected: open the URL from :Markbridge url', true);
+        const j = await r.json();
+        fails = 0;
+        if (!j.same && !pending) {
+          tick = j.tick; bufId = j.id; lines = j.lines; name = j.name;
+          const keep = document.activeElement && document.activeElement.isContentEditable ? null : window.scrollY;
+          render();
+          if (keep != null) window.scrollTo(0, keep);
+          document.title = name + ' · markbridge';
+        }
+        if (j.disk_changed) status('file changed on disk, buffer has unsaved edits (nvim kept yours)', true);
+        else if (!pending) status('synced');
+        if (j.cursor && j.cursor !== lastCursor) { lastCursor = j.cursor; if (!document.activeElement.isContentEditable) scrollTo(j.cursor); }
+      } catch {
+        fails++;
+        status(fails > 10 ? 'nvim preview stopped. Restart it and open the new URL' : 'reconnecting…', true);
+        delay = Math.min(500 * 2 ** Math.min(fails, 4), 8000);
+      }
+    }
+    setTimeout(poll, delay);
+  }
+  poll();
+})();
