@@ -61,6 +61,10 @@ Shift+7/8/9 numbered/bullet/task list, E inline code, K link, Shift+X strike. Th
 handle left of a top-level block moves, deletes, converts it, or inserts a block
 below. Clicking a block moves the nvim cursor to it.
 
+A bar at the top of the page has formatting buttons, undo and redo (nvim's
+undo), refresh (also re-reads the file from disk) and a help panel (Cmd or
+Ctrl+/).
+
 An edited block is rewritten from the page; the rest of the file is untouched.
 Soft-wrapped lines are kept, emphasis normalises to `*x*` / `**x**`, some
 characters are escaped, and tables are re-padded (alignment is kept).

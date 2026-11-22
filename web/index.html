@@ -9,7 +9,7 @@
 <style>
   :root { color-scheme: light dark; --bg: #fff; --fg: #1f2328; --ring: rgba(56,139,253,.6); --note: #9a6700; }
   @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --note: #d29922; } }
-  body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { margin: 0; padding-top: 44px; background: var(--bg); color: var(--fg); }
   .markdown-body { box-sizing: border-box; max-width: 860px; margin: 0 auto; padding: 32px 24px 120px; background: transparent; }
   [contenteditable="true"] { outline: none; border-radius: 4px; }
   [contenteditable="true"]:hover { box-shadow: 0 0 0 2px rgba(128,128,128,.25); }
@@ -40,13 +40,60 @@
   #menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--fg); padding: 4px 8px; border-radius: 4px; cursor: pointer; font: inherit; }
   #menu button:hover { background: rgba(56,139,253,.2); }
   #menu h6 { margin: 6px 8px 2px; font-size: 11px; opacity: .5; text-transform: uppercase; }
-  #bar { position: fixed; right: 12px; bottom: 8px; font: 12px/1.4 system-ui, sans-serif; opacity: .65; color: gray; }
+  #top { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 6px 12px; background: var(--bg); border-bottom: 1px solid rgba(128,128,128,.25); font: 13px system-ui, sans-serif; }
+  #top button { min-width: 30px; height: 28px; border: 0; border-radius: 5px; background: transparent; color: var(--fg); cursor: pointer; font: inherit; }
+  #top button:hover { background: rgba(128,128,128,.2); }
+  #top button.on { background: rgba(56,139,253,.25); }
+  #top .sep { width: 1px; height: 18px; margin: 0 6px; background: rgba(128,128,128,.35); }
+  #bar { order: 99; margin-left: auto; font-size: 12px; opacity: .65; color: gray; white-space: nowrap; }
+  #help { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; font: 14px/1.5 system-ui, sans-serif; }
+  #help[hidden] { display: none; }
+  #help .card { position: relative; width: min(560px, 92vw); max-height: 86vh; overflow: auto; padding: 20px 24px; border-radius: 10px; background: var(--bg); color: var(--fg); box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  #help h2 { margin: 0 0 6px; } #help h3 { margin: 16px 0 4px; font-size: 13px; text-transform: uppercase; opacity: .6; } #help small { text-transform: none; }
+  #help table { border-collapse: collapse; } #help td { padding: 2px 16px 2px 0; vertical-align: top; }
+  #help ul { margin: 4px 0; padding-left: 18px; }
+  #help kbd { padding: 1px 5px; border: 1px solid rgba(128,128,128,.5); border-radius: 4px; font: 12px ui-monospace, monospace; }
+  #help .close { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: var(--fg); font-size: 20px; cursor: pointer; }
   #bar.warn { color: var(--note); opacity: 1; }
 </style>
 </head>
 <body>
 <article class="markdown-body" id="doc"></article>
-<div id="bar">connecting…</div>
+<div id="top"><span id="bar">connecting…</span></div>
+<div id="help" hidden>
+  <div class="card">
+    <button class="close" title="Close (Esc)">×</button>
+    <h2>markbridge</h2>
+    <p>Edit the page; the markdown in Neovim changes within about half a second. Neovim stays the source of truth: if it changed first, your edit is dropped and the page reloads.</p>
+    <h3>Shortcuts <small>(Cmd on macOS, Ctrl elsewhere)</small></h3>
+    <table>
+      <tr><td><kbd>B</kbd> <kbd>I</kbd></td><td>Bold, italic</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>Strikethrough</td></tr>
+      <tr><td><kbd>E</kbd></td><td>Inline code (selection)</td></tr>
+      <tr><td><kbd>K</kbd></td><td>Link</td></tr>
+      <tr><td><kbd>Alt</kbd>+<kbd>0</kbd>…<kbd>6</kbd></td><td>Paragraph, heading 1 to 6</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>7</kbd> <kbd>8</kbd> <kbd>9</kbd></td><td>Numbered, bullet, task list</td></tr>
+      <tr><td><kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Undo / redo in Neovim</td></tr>
+      <tr><td><kbd>/</kbd></td><td>This help</td></tr>
+    </table>
+    <h3>Blocks</h3>
+    <ul>
+      <li><b>Enter</b> splits a block, or opens a new one at the end. <b>Shift+Enter</b> is a line break.</li>
+      <li>Tables: <b>Tab</b> / <b>Enter</b> move between cells, Tab in the last cell adds a row; buttons above the table add or remove rows and columns.</li>
+      <li>Code, mermaid and math: click to edit the source, <b>Esc</b> to render it.</li>
+      <li>Hover a block and use the <b>⋮⋮</b> handle to move, delete, convert it or insert a block below.</li>
+      <li>Paste or drop an image into a paragraph: it is saved next to the file and linked.</li>
+      <li>Click a block to move the Neovim cursor to it.</li>
+      <li>Frontmatter fields at the top are editable; lists there are read-only.</li>
+    </ul>
+    <h3>Good to know</h3>
+    <ul>
+      <li>Edits change the Neovim buffer but don't save it: <code>:w</code> in Neovim.</li>
+      <li>An edited block is rewritten from the page; emphasis may normalise to <code>*x*</code> and <code>**x**</code>, tables are re-padded.</li>
+      <li><b>↻</b> reloads from Neovim and re-reads the file from disk (unless the buffer has unsaved edits).</li>
+    </ul>
+  </div>
+</div>
 <script src="/vendor/markdown-it.min.js"></script>
 <script src="/vendor/markdown-it-emoji.min.js"></script>
 <script src="/vendor/katex/katex.min.js"></script>

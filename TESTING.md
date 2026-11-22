@@ -18,6 +18,7 @@ mermaid block and some math:
 - [ ] Click a code block, a mermaid diagram and a `$$` block: the source opens, edits reach nvim, Esc re-renders
 - [ ] Frontmatter field edits reach nvim; list-valued fields stay read-only
 - [ ] Block handle: move up/down, delete, turn into, insert below (all kinds), each one undo step in nvim
+- [ ] Top bar: B/I/S/code/link on a selection, ¶/H1-H3, lists, undo/redo (also Cmd/Ctrl+Z), refresh, help panel (Esc closes)
 - [ ] Shortcuts: Cmd/Ctrl+Alt+1..6 and 0, Shift+7/8/9, E, K, Shift+X
 - [ ] Paste a screenshot into a paragraph: file appears under assets/, image shows, markdown link written
 - [ ] Click a block: the nvim cursor moves to its first line
