@@ -682,7 +682,7 @@
         }
         if (typeof j.modified === 'boolean' && j.modified !== modified) { modified = j.modified; showSaved(); }
         if (!!j.disk_changed !== diskChanged) { diskChanged = !!j.disk_changed; showSaved(); }
-        if (j.disk_changed) status('file changed on disk, buffer has unsaved edits: Resolve', true);
+        if (j.disk_changed) status('file changed on disk: Resolve', true);
         else if (!pending) status('synced');
         if (j.cursor && j.cursor !== lastCursor) { lastCursor = j.cursor; if (!document.activeElement.isContentEditable) scrollTo(j.cursor); }
       } catch {
