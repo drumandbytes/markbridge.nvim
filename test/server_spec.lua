@@ -165,6 +165,8 @@ vim.fn.writefile({ 'from disk', 'b', 'c' }, md3)
 http('POST', '/refresh', {})
 check('refresh re-reads the file', wait(function() return vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'from disk' end))
 
+check('oversized body refused', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-m', '3', '-X', 'POST', '-H', 'Content-Length: 99999999999', '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/edit' }) == '413')
+
 -- preferred port: used when free, replaced by a free one when busy
 mb.stop()
 local blocker = vim.uv.new_tcp()

@@ -62,6 +62,10 @@ function M.listen(st, on_request)
       if not hend then return end
       local head = buf:sub(1, hend - 1)
       local len = tonumber(head:lower():match 'content%-length:%s*(%d+)') or 0
+      if len > 25 * 1024 * 1024 then -- refuse before buffering it
+        client:read_stop()
+        return respond(client, '413 Payload Too Large', 'text/plain', 'too large')
+      end
       if #buf - (hend + 3) < len then return end
       client:read_stop()
       local method, target = head:match '^(%u+) (%S+)'
