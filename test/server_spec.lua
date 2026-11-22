@@ -169,6 +169,7 @@ check('refresh re-reads the file', wait(function() return vim.api.nvim_buf_get_l
 mb.stop()
 local blocker = vim.uv.new_tcp()
 blocker:bind('127.0.0.1', 0)
+blocker:listen(1, function() end) -- on Linux a bound-only socket doesn't block another bind
 local busy = blocker:getsockname().port
 mb.config.port = busy
 mb.start()
