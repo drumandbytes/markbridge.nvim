@@ -3,7 +3,7 @@ local uv = vim.uv
 local M = {}
 
 ---@class markbridge.Config
----@field port integer 0 picks a free port; set one to keep the same URL between sessions
+---@field port integer preferred port (default 6274); if it is busy a free one is used. 0 always picks a free one
 ---@field open boolean|fun(url: string) open the browser on start (or call your own function)
 ---@field follow boolean retarget the preview when you enter another markdown buffer
 ---@field scroll_sync boolean scroll the page to the block under the nvim cursor
@@ -11,7 +11,7 @@ local M = {}
 ---@field friendly_url boolean open http://markbridge.localhost:<port> instead of 127.0.0.1 (set false if your browser can't resolve *.localhost)
 ---@field theme 'auto'|'light'|'dark' page theme; auto follows the OS. The page's own button overrides it per browser
 ---@field images_dir string folder, relative to the markdown file, where pasted images are saved
-M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', friendly_url = true, images_dir = 'assets' }
+M.config = { port = 6274, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', friendly_url = true, images_dir = 'assets' }
 
 local S -- running state
 
@@ -233,6 +233,7 @@ function M.start()
   st.server = server.listen(st, handle)
   if not st.server then return vim.notify('markbridge: cannot listen on 127.0.0.1:' .. tostring(M.config.port), vim.log.levels.ERROR) end
   st.port = st.server:getsockname().port
+  if st.fell_back then vim.notify(('markbridge: port %d is busy, using %d'):format(M.config.port, st.port), vim.log.levels.INFO) end
   S = st
   retarget(buf)
   local g = vim.api.nvim_create_augroup(AUG, { clear = true })

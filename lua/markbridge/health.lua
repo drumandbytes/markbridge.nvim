@@ -17,7 +17,7 @@ function M.check()
   if ok == 0 then vim.health.ok 'can listen on 127.0.0.1' else vim.health.error 'cannot bind a localhost port' end
 
   local cfg = require('markbridge').config
-  if cfg.port ~= 0 then vim.health.info('fixed port ' .. cfg.port) end
+  if cfg.port ~= 0 then vim.health.info('preferred port ' .. cfg.port) end
   if cfg.open == true and not vim.ui.open then vim.health.warn 'vim.ui.open missing: set `open` to a function' end
 end
 
