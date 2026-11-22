@@ -1,0 +1,11 @@
+{
+  "name": "markbridge.nvim",
+  "private": true,
+  "description": "Dev tooling only: the plugin itself has no runtime dependencies.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

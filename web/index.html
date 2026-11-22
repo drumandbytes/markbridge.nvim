@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>markbridge</title>
+<link rel="stylesheet" href="/vendor/github-markdown.css">
+<link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1f2328; --ring: rgba(56,139,253,.6); --note: #9a6700; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --note: #d29922; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); }
+  .markdown-body { box-sizing: border-box; max-width: 860px; margin: 0 auto; padding: 32px 24px 120px; background: transparent; }
+  [contenteditable="true"] { outline: none; border-radius: 4px; }
+  [contenteditable="true"]:hover { box-shadow: 0 0 0 2px rgba(128,128,128,.25); }
+  [contenteditable="true"]:focus, td:focus-within, th:focus-within { box-shadow: 0 0 0 2px var(--ring); }
+  [data-ghost]:empty::before { content: "…"; opacity: .4; }
+  .mb-frontmatter { opacity: .55; font-size: 12px; }
+  .markdown-body pre code.hljs { background: transparent; }
+  #bar { position: fixed; right: 12px; bottom: 8px; font: 12px/1.4 system-ui, sans-serif; opacity: .65; color: gray; }
+  #bar.warn { color: var(--note); opacity: 1; }
+</style>
+</head>
+<body>
+<article class="markdown-body" id="doc"></article>
+<div id="bar">connecting…</div>
+<script src="/vendor/markdown-it.min.js"></script>
+<script src="/vendor/markdown-it-emoji.min.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/vendor/highlight/highlight.min.js"></script>
+<script src="/vendor/mermaid.min.js"></script>
+<script src="/web/core.js"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>
