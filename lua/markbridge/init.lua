@@ -1,4 +1,5 @@
 local server = require 'markbridge.server'
+local merge = require 'markbridge.merge'
 local uv = vim.uv
 local M = {}
 
@@ -14,6 +15,11 @@ local M = {}
 M.config = { port = 6274, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', friendly_url = true, images_dir = 'assets' }
 
 local S -- running state
+
+-- The file as nvim last read or wrote it, per buffer: the common ancestor when the buffer and
+-- the file on disk have both changed.
+local bases = {}
+local function snap(buf) bases[buf] = vim.api.nvim_buf_get_lines(buf, 0, -1, false) end
 
 local AUG = 'markbridge'
 
@@ -99,6 +105,10 @@ end
 local function retarget(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   S.name = vim.fn.fnamemodify(name, ':t')
+  if not bases[buf] then
+    -- A buffer that is already modified: the disk is the best guess at what it started from.
+    if vim.bo[buf].modified and name ~= '' and vim.fn.filereadable(name) == 1 then bases[buf] = vim.fn.readfile(name) else snap(buf) end
+  end
   S.buf, S.disk_changed, S.dir = buf, false, name ~= '' and vim.fs.dirname(vim.fn.fnamemodify(name, ':p')) or nil
   S.cursor = vim.api.nvim_buf_call(buf, function() return vim.fn.line '.' end)
   arm_watcher()
@@ -135,6 +145,7 @@ local function handle(client, req)
     local snap = snapshot(buf)
     local extra = {
       theme = M.config.theme,
+      modified = vim.bo[buf].modified,
       cursor = M.config.scroll_sync and S.cursor or nil,
       disk_changed = (S.disk_changed and vim.bo[buf].modified) or nil,
     }
@@ -185,6 +196,60 @@ local function handle(client, req)
       if r.id ~= buf then return server.respond(client, '400 Bad Request', 'text/plain', 'bad buffer') end
       vim.api.nvim_buf_call(buf, function() vim.cmd(r.redo and 'silent! redo' or 'silent! undo') end)
       return server.json(client, '200 OK', { ok = true })
+    end
+    if req.method == 'GET' and req.path == '/diff' then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name == '' or vim.fn.filereadable(name) == 0 then return server.json(client, '404 Not Found', { error = 'no file on disk to compare with' }) end
+      local mine = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n') .. '\n'
+      local disk = table.concat(vim.fn.readfile(name), '\n') .. '\n'
+      -- '-' lines exist only in the buffer, '+' lines only on disk
+      return server.json(client, '200 OK', { diff = vim.diff(mine, disk, { result_type = 'unified', ctxlen = 2 }), name = vim.fn.fnamemodify(name, ':t') })
+    end
+    if req.method == 'GET' and req.path == '/merge' then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if not bases[buf] or name == '' or vim.fn.filereadable(name) == 0 then return server.json(client, '200 OK', { no_base = true }) end
+      local segs, stats = merge.merge3(bases[buf], vim.api.nvim_buf_get_lines(buf, 0, -1, false), vim.fn.readfile(name))
+      local conflicts = {}
+      for _, s in ipairs(segs) do
+        if s.type == 'conflict' then conflicts[#conflicts + 1] = { mine = s.mine, theirs = s.theirs, base = s.base } end
+      end
+      return server.json(client, '200 OK', { name = vim.fn.fnamemodify(name, ':t'), mine = stats.mine, theirs = stats.theirs, conflicts = conflicts })
+    end
+    if req.method == 'POST' and req.path == '/resolve' then
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf or (r.choice ~= 'keep' and r.choice ~= 'disk' and r.choice ~= 'merge') then return server.respond(client, '400 Bad Request', 'text/plain', 'bad resolve') end
+      if r.choice == 'merge' then
+        -- Recomputed now: if either side moved since the dialog opened the picks no longer line up.
+        local name = vim.api.nvim_buf_get_name(buf)
+        if not bases[buf] or name == '' or type(r.picks) ~= 'table' then return server.respond(client, '400 Bad Request', 'text/plain', 'cannot merge') end
+        local segs = merge.merge3(bases[buf], vim.api.nvim_buf_get_lines(buf, 0, -1, false), vim.fn.readfile(name))
+        local merged = merge.build(segs, r.picks)
+        if not merged then return server.json(client, '409 Conflict', { error = 'the buffer or the file changed again: reopen the dialog' }) end
+        local done, err = pcall(vim.api.nvim_buf_call, buf, function()
+          vim.api.nvim_buf_set_lines(buf, 0, -1, false, merged) -- one undo step
+          vim.cmd 'silent write!'
+        end)
+        if not done then return server.json(client, '500 Internal Server Error', { error = tostring(err) }) end
+        S.disk_changed = false
+        return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
+      end
+      local cmd = r.choice == 'keep' and 'silent write!' or 'silent edit!' -- edit! is undoable (undoreload)
+      local done, err = pcall(vim.api.nvim_buf_call, buf, function() vim.cmd(cmd) end)
+      if not done then return server.json(client, '500 Internal Server Error', { error = tostring(err) }) end
+      S.disk_changed = false
+      return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
+    end
+    if req.method == 'POST' and req.path == '/save' then
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf then return server.respond(client, '400 Bad Request', 'text/plain', 'bad buffer') end
+      if vim.api.nvim_buf_get_name(buf) == '' then return server.json(client, '400 Bad Request', { error = 'this buffer has no file name: :w <name> in nvim first' }) end
+      -- :write on a file that changed on disk stops at a y/n prompt nobody can answer from the page.
+      if S.disk_changed then return server.json(client, '409 Conflict', { error = 'the file changed on disk: resolve it in nvim (:w! or :e!)' }) end
+      local wrote, err = pcall(vim.api.nvim_buf_call, buf, function() vim.cmd 'silent write' end)
+      if not wrote then return server.json(client, '500 Internal Server Error', { error = tostring(err):gsub('^.-E%d+:', 'E') }) end
+      return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
     end
     if req.method == 'POST' and req.path == '/image' then
       local ext = EXT[req.ctype or '']
@@ -250,12 +315,14 @@ function M.start()
       if S and a.buf == S.buf then S.cursor = vim.fn.line '.' end
     end,
   })
-  vim.api.nvim_create_autocmd({ 'BufWritePost', 'FileChangedShellPost' }, {
+  vim.api.nvim_create_autocmd({ 'BufWritePost', 'FileChangedShellPost', 'BufReadPost' }, {
     group = g,
     callback = function(a)
+      if bases[a.buf] then snap(a.buf) end
       if S and a.buf == S.buf then S.disk_changed = false end
     end,
   })
+  vim.api.nvim_create_autocmd('BufWipeout', { group = g, callback = function(a) bases[a.buf] = nil end })
   vim.api.nvim_create_autocmd('BufEnter', {
     group = g,
     callback = function(a)

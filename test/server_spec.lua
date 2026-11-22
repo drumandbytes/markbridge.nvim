@@ -151,6 +151,64 @@ local _, st2 = http('GET', '/state?tick=-1&id=-1')
 check(':Markbridge theme changes it', st2.theme == 'dark', st2.theme)
 mb.set_theme('auto')
 
+-- save
+vim.wait(400) -- let watcher events from the setup above settle
+vim.api.nvim_buf_set_lines(buf3, 0, 1, false, { 'saved from the page' })
+local _, s3 = http('GET', '/state?tick=-1&id=-1')
+check('state reports unsaved changes', s3.modified == true)
+code, st = http('POST', '/save', { id = buf3 })
+check('save writes the file', code == 200 and st.ok and st.modified == false and vim.fn.readfile(md3)[1] == 'saved from the page', st)
+code = http('POST', '/save', { id = buf3 + 99 })
+check('save for another buffer refused', code == 400)
+vim.api.nvim_buf_set_lines(buf3, 0, 1, false, { 'edited again' })
+vim.fn.writefile({ 'changed elsewhere' }, md3)
+check('disk change with unsaved edits is flagged', wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end))
+code, st = http('POST', '/save', { id = buf3 })
+check('save refuses to overwrite a file changed on disk', code == 409 and vim.fn.readfile(md3)[1] == 'changed elsewhere', st)
+code, st = http('GET', '/diff')
+check('diff shows buffer-only and disk-only lines', code == 200 and st.diff:find('%-edited again') and st.diff:find('%+changed elsewhere'), st)
+code, st = http('POST', '/resolve', { id = buf3, choice = 'keep' })
+check('resolve keep writes the buffer over the file', code == 200 and st.modified == false and vim.fn.readfile(md3)[1] == 'edited again', st)
+vim.api.nvim_buf_set_lines(buf3, 0, 1, false, { 'mine2' })
+vim.fn.writefile({ 'theirs2' }, md3)
+wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end)
+code, st = http('POST', '/resolve', { id = buf3, choice = 'disk' })
+check('resolve disk loads the file', code == 200 and vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'theirs2' and not vim.bo[buf3].modified, st)
+local _, s4 = http('GET', '/state?tick=-1&id=-1')
+check('conflict flag cleared after resolving', s4.disk_changed == nil)
+code = http('POST', '/resolve', { id = buf3, choice = 'nope' })
+check('bad resolve choice refused', code == 400)
+vim.fn.writefile({ 'a', 'b', 'c' }, md3)
+vim.cmd 'silent! edit!' -- back to known content for the undo checks
+vim.wait(400)
+vim.cmd 'let &undolevels = &undolevels' -- a script run has no key presses, so force an undo break
+
+-- three-way merge of buffer edits and disk edits
+vim.fn.writefile({ 'one', 'two', 'three', 'four' }, md3)
+vim.cmd 'silent! edit!'
+vim.wait(400)
+vim.api.nvim_buf_set_lines(buf3, 3, 4, false, { 'FOUR from the buffer' }) -- buffer changes line 4
+vim.fn.writefile({ 'ONE from disk', 'two', 'three', 'four' }, md3) -- disk changes line 1
+check('disk change flagged for the merge', wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end))
+code, st = http('GET', '/merge')
+check('non-overlapping changes merge cleanly', code == 200 and #st.conflicts == 0 and st.mine == 1 and st.theirs == 1, st)
+code, st = http('POST', '/resolve', { id = buf3, choice = 'merge', picks = {} })
+check('merge applies both and saves', code == 200 and vim.deep_equal(vim.fn.readfile(md3), { 'ONE from disk', 'two', 'three', 'FOUR from the buffer' }) and not vim.bo[buf3].modified, st)
+
+vim.api.nvim_buf_set_lines(buf3, 1, 2, false, { 'two (mine)' })
+vim.fn.writefile({ 'ONE from disk', 'two (theirs)', 'three', 'FOUR from the buffer' }, md3)
+wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end)
+code, st = http('GET', '/merge')
+check('overlapping changes are reported as a conflict', code == 200 and #st.conflicts == 1 and st.conflicts[1].mine[1] == 'two (mine)' and st.conflicts[1].theirs[1] == 'two (theirs)', st)
+code = http('POST', '/resolve', { id = buf3, choice = 'merge', picks = {} })
+check('merge with the wrong number of picks refused', code == 409)
+code = http('POST', '/resolve', { id = buf3, choice = 'merge', picks = { 'both' } })
+check('conflict resolved with both', code == 200 and vim.deep_equal(vim.fn.readfile(md3), { 'ONE from disk', 'two (mine)', 'two (theirs)', 'three', 'FOUR from the buffer' }), vim.fn.readfile(md3))
+vim.fn.writefile({ 'a', 'b', 'c' }, md3)
+vim.cmd 'silent! edit!'
+vim.wait(400)
+vim.cmd 'let &undolevels = &undolevels'
+
 -- undo / redo / refresh
 vim.cmd 'silent! write'
 code = http('POST', '/edit', { tick = vim.api.nvim_buf_get_changedtick(buf3), id = buf3, s = 0, e = 1, old = { 'a' }, lines = { 'A' } })

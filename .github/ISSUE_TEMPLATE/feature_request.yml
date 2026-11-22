@@ -1,0 +1,10 @@
+name: Feature request
+description: Suggest something markbridge should do
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are trying to do
+      description: The task first, then the idea.
+    validations:
+      required: true

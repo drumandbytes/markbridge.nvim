@@ -75,8 +75,12 @@ characters are escaped, and tables are re-padded (alignment is kept).
 ==============================================================================
 4. SYNCING                                                      *markbridge-sync*
 
-nvim wins: an edit made on a stale page is rejected and the page reloads. One
-browser edit is one undo step. Browser edits do not save the buffer.
+An edit made on a stale page is re-applied where its block now is; if nvim changed
+that block too, a dialog shows both versions and you choose. If the file changed on
+disk while the buffer has unsaved edits, the Resolve button does a three-way merge
+against the version nvim last read: changes in different places combine, and
+overlapping ones are listed to pick mine, theirs or both. One
+browser edit is one undo step. Browser edits do not save the buffer by themselves: use the Save button (Cmd or Ctrl+S) or `:w`. Saving from the page refuses a file that changed on disk.
 
 With `watch`, a change to the file on disk runs |:checktime|: an unmodified
 buffer reloads, a modified one is never touched and the page shows a notice.
