@@ -64,7 +64,7 @@ require('markbridge').setup {
   follow = true,       -- retarget when you enter another markdown buffer
   scroll_sync = true,  -- scroll the page to the block under the nvim cursor
   watch = true,        -- reload the buffer when the file changes on disk
-  friendly_url = true, -- open http://<file>.localhost:<port>; false uses 127.0.0.1
+  friendly_url = true, -- open http://markbridge.localhost:<port>; false uses 127.0.0.1
   theme = 'auto',      -- page theme: 'auto' (follow the OS), 'light' or 'dark'
   images_dir = 'assets', -- where pasted images go, relative to the markdown file
 }
@@ -136,7 +136,7 @@ byte untouched. Inside it:
 
 ## Security
 
-The server binds to `127.0.0.1` only, on a random port (the page opens at `http://<file>.localhost:<port>`, which browsers resolve to the loopback themselves; set `friendly_url = false` for the bare IP). Every request that reads or
+The server binds to `127.0.0.1` only, on a random port (the page opens at `http://markbridge.localhost:<port>`, which browsers resolve to the loopback themselves; set `friendly_url = false` for the bare IP). Every request that reads or
 writes the buffer needs a random per-session token in an `X-Token` header (a custom
 header, so another website can't send it cross-origin), and the page URL carries the
 token. Requests must carry our own `Host`, which is `<label>.localhost`, `localhost` or `127.0.0.1` on our port (a DNS-rebinding defence). Images are served

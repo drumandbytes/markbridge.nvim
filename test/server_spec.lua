@@ -113,7 +113,7 @@ local function raw(args)
 end
 check('friendly host accepted', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: notes.localhost:' .. port, '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '200')
 check('friendly host on another port rejected', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: notes.localhost:1', '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '403')
-check('url uses <file>.localhost', mb.url():match '^http://[%w%-]+%.localhost:%d+/%?t=%x+$' ~= nil, mb.url())
+check('url uses markbridge.localhost', mb.url():match '^http://markbridge%.localhost:%d+/%?t=%x+$' ~= nil, mb.url())
 local pg = raw({ 'curl', '-s', '-H', 'Host: x.localhost:' .. port, 'http://127.0.0.1:' .. port .. '/?t=' .. token })
 check('page title carries the file name', pg:match '<title>[^<]+ · markbridge</title>' ~= nil)
 check('favicon served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', 'http://127.0.0.1:' .. port .. '/web/favicon.svg' }) == '200')
