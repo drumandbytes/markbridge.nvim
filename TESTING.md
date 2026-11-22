@@ -14,6 +14,7 @@ mermaid block and some math:
 - [ ] Cmd/Ctrl+B and I produce `**` and `*`; paste inserts plain text
 - [ ] Enter in the middle of a paragraph splits it; at the end of a list item opens a new item; at the end of a paragraph opens an empty block that is written on the first keystroke
 - [ ] Tab / Enter move between table cells; Shift+Tab goes back
+- [ ] Table buttons (+/- row, +/- col) and Tab in the last cell change the table; column alignment stays with its column
 - [ ] Clicking a checkbox toggles `[ ]` / `[x]`
 - [ ] IME composition (for example Japanese or Chinese input) does not split or commit mid-composition
 - [ ] Backspace at the start and end of a block does not merge or delete neighbours

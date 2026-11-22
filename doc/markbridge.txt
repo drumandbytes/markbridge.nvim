@@ -49,12 +49,13 @@ links, footnotes or autolinks.
 
 Enter splits a block at the caret, or opens an empty block below when the caret
 is at the end (paragraph, list item). In a table cell Enter and Tab move between
-cells. Shift+Enter is a hard line break. Clicking a task checkbox toggles it.
+cells, and Tab in the last cell adds a row. Buttons above a focused table add and
+remove rows and columns. Shift+Enter is a hard line break. Clicking a task
+checkbox toggles it.
 
 An edited block is rewritten from the page; the rest of the file is untouched.
 Soft-wrapped lines are kept, emphasis normalises to `*x*` / `**x**`, some
-characters are escaped, and tables are re-padded (alignment is kept). Rows and
-columns cannot be added or removed in the browser yet.
+characters are escaped, and tables are re-padded (alignment is kept).
 
 ==============================================================================
 4. SYNCING                                                      *markbridge-sync*

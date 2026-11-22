@@ -123,3 +123,28 @@ test('emptying a block writes nothing', () => {
   blocks[0].el.textContent = '   ';
   assert.equal(C.build(blocks[0].el, lines, 'p'), null);
 });
+
+test('adding and removing table rows and columns keeps alignment in step', () => {
+  const { lines, blocks } = setup('| a | b | c |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |');
+  const { el } = blocks[0];
+  C.tableAlign(el, lines.slice(0, 3)); // read once from the source
+  C.tableOps.delCol(el, 1);
+  assert.deepEqual(C.build(el, lines, 'table'), ['| a   | c   |', '| :-- | --: |', '| 1   | 3   |']);
+  C.tableOps.addCol(el, 0);
+  el.rows[0].cells[1].textContent = 'new';
+  assert.deepEqual(C.build(el, lines, 'table'), ['| a   | new | c   |', '| :-- | --- | --: |', '| 1   |     | 3   |']);
+  const cell = C.tableOps.addRow(el, 1);
+  cell.textContent = 'x';
+  assert.deepEqual(C.build(el, lines, 'table').slice(3), ['| x   |     |     |']);
+  assert.equal(C.tableOps.delRow(el, 0), null, 'header row stays');
+  C.tableOps.delRow(el, 2);
+  assert.equal(el.rows.length, 2);
+});
+
+test('a table can lose its only body row and keeps its last column', () => {
+  const { lines, blocks } = setup('| a |\n| - |\n| 1 |');
+  const { el } = blocks[0];
+  assert.equal(C.tableOps.delCol(el, 0), null);
+  C.tableOps.delRow(el, 1);
+  assert.deepEqual(C.build(el, lines, 'table'), ['| a   |', '| --- |']);
+});

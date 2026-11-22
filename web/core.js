@@ -176,16 +176,63 @@
     return t.split(/(?<!\\)\|/).map(c => c.trim());
   }
 
+  // Column alignments ('-', ':-', '-:', ':-:'). Kept on the element once read from the
+  // source so adding and removing columns doesn't shift them.
+  function tableAlign(el, old) {
+    if (el.dataset.align) return JSON.parse(el.dataset.align);
+    const sep = cellsOf((old[1] || '').replace(PREFIX, ''));
+    const a = sep.map(s => (s.startsWith(':') ? ':' : '') + '-' + (s.endsWith(':') ? ':' : ''));
+    el.dataset.align = JSON.stringify(a);
+    return a;
+  }
+
+  function cellEl(el, tag) {
+    const c = el.ownerDocument.createElement(tag);
+    c.contentEditable = 'true';
+    return c;
+  }
+
+  // Structure edits on the table DOM; the next commit rebuilds the markdown from it.
+  // Rows are indexed over el.rows (0 is the header), columns from 0.
+  const tableOps = {
+    addRow(el, after) {
+      const n = el.rows[0].cells.length;
+      const tr = el.ownerDocument.createElement('tr');
+      for (let i = 0; i < n; i++) tr.append(cellEl(el, 'td'));
+      const ref = el.rows[Math.max(after, 0)];
+      if (ref.parentElement.tagName === 'THEAD') (el.tBodies[0] || el.appendChild(el.ownerDocument.createElement('tbody'))).prepend(tr);
+      else ref.after(tr);
+      return tr.cells[0];
+    },
+    delRow(el, row) {
+      if (row < 1 || row >= el.rows.length) return null;
+      const next = el.rows[row + 1] || el.rows[row - 1];
+      el.rows[row].remove();
+      return next.cells[0];
+    },
+    addCol(el, after, align) {
+      for (const r of el.rows) r.cells[after].after(cellEl(el, r.parentElement.tagName === 'THEAD' ? 'th' : 'td'));
+      const a = tableAlign(el, []);
+      a.splice(after + 1, 0, align || '-');
+      el.dataset.align = JSON.stringify(a);
+      return el.rows[0].cells[after + 1];
+    },
+    delCol(el, col) {
+      if (el.rows[0].cells.length < 2) return null;
+      const a = tableAlign(el, []);
+      a.splice(col, 1);
+      el.dataset.align = JSON.stringify(a);
+      for (const r of el.rows) r.cells[col].remove();
+      return el.rows[0].cells[Math.min(col, el.rows[0].cells.length - 1)];
+    },
+  };
+
   function buildTable(el, old) {
     const pfx = old[0].match(PREFIX)[0];
     const cont = contPrefix(pfx);
     const rows = [...el.rows].map(r => [...r.cells].map(c => clean(inl(c, true)).replace(/\s*\n\s*/g, ' ')));
     const ncol = Math.max(...rows.map(r => r.length));
-    const sep = cellsOf(old[1].replace(PREFIX, ''));
-    const align = Array.from({ length: ncol }, (_, i) => {
-      const s = sep[i] || '---';
-      return (s.startsWith(':') ? ':' : '') + '-' + (s.endsWith(':') ? ':' : '');
-    });
+    const align = Array.from({ length: ncol }, (_, i) => (tableAlign(el, old) || [])[i] || '-');
     const width = Array.from({ length: ncol }, (_, i) =>
       Math.max(3, align[i].length, ...rows.map(r => (r[i] || '').length)));
     const fmt = r => '| ' + width.map((w, i) => (r[i] || '').padEnd(w)).join(' | ') + ' |';
@@ -234,5 +281,5 @@
   // Markdown for a DOM range/fragment (used to split a block at the caret).
   const fragmentToMd = frag => clean(inl(frag, false));
 
-  return { PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
+  return { tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
 });
