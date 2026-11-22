@@ -20,6 +20,7 @@ CONTENTS                                                    *markbridge-contents
         stop     stop the server
         url      print the URL (it contains a per-session token)
         status   running or stopped
+        theme    `:Markbridge theme [auto|light|dark]` shows or sets the page theme
 <
 Lua API: `require('markbridge')`: `.start()`, `.stop()`, `.toggle()`, `.url()`,
 `.is_running()`, `.setup({opts})`.
@@ -31,11 +32,14 @@ Health: `:checkhealth markbridge`
 
 >lua
     require('markbridge').setup {
-      port = 0,            -- 0 = a free port; set one to keep the same URL
+      port = 6274,         -- preferred port; a free one is used if it is busy (0 = always a free one)
       open = true,         -- open the browser on start; or a function(url)
       follow = true,       -- retarget when you enter another markdown buffer
       scroll_sync = true,  -- scroll the page to the block under the cursor
       watch = true,        -- reload the buffer when the file changes on disk
+      friendly_url = true, -- http://markbridge.localhost:<port>; false = 127.0.0.1
+      theme = 'auto',      -- 'auto' (follow the OS), 'light' or 'dark'
+      images_dir = 'assets', -- where pasted images go, relative to the file
     }
 <
 
@@ -53,6 +57,17 @@ cells, and Tab in the last cell adds a row. Buttons above a focused table add an
 remove rows and columns. Shift+Enter is a hard line break. Clicking a task
 checkbox toggles it.
 
+Code, mermaid and `$$` math blocks open their source in a text box on click.
+Frontmatter `key: value` lines are fields. A pasted or dropped image is saved to
+`images_dir` and linked. Shortcuts (Cmd or Ctrl): Alt+0..6 paragraph/heading,
+Shift+7/8/9 numbered/bullet/task list, E inline code, K link, Shift+X strike. The
+handle left of a top-level block moves, deletes, converts it, or inserts a block
+below. Clicking a block moves the nvim cursor to it.
+
+A bar at the top of the page has formatting buttons, undo and redo (nvim's
+undo), refresh (also re-reads the file from disk) and a help panel (Cmd or
+Ctrl+/).
+
 An edited block is rewritten from the page; the rest of the file is untouched.
 Soft-wrapped lines are kept, emphasis normalises to `*x*` / `**x**`, some
 characters are escaped, and tables are re-padded (alignment is kept).
@@ -69,7 +84,7 @@ buffer reloads, a modified one is never touched and the page shows a notice.
 ==============================================================================
 5. SECURITY                                                *markbridge-security*
 
-The server listens on 127.0.0.1 only. Requests need a random per-session token
+The server listens on 127.0.0.1 only (port 6274 by default, a free one if busy). Requests need a random per-session token
 (an `X-Token` header; the page URL carries it). It stops with `:Markbridge
 stop`, when the previewed buffer is closed, or when Neovim exits.
 

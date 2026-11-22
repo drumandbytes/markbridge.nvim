@@ -3,23 +3,42 @@ local uv = vim.uv
 local M = {}
 
 ---@class markbridge.Config
----@field port integer 0 picks a free port; set one to keep the same URL between sessions
+---@field port integer preferred port (default 6274); if it is busy a free one is used. 0 always picks a free one
 ---@field open boolean|fun(url: string) open the browser on start (or call your own function)
 ---@field follow boolean retarget the preview when you enter another markdown buffer
 ---@field scroll_sync boolean scroll the page to the block under the nvim cursor
 ---@field watch boolean reload the buffer when the file changes on disk (never over unsaved edits)
-M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true }
+---@field friendly_url boolean open http://markbridge.localhost:<port> instead of 127.0.0.1 (set false if your browser can't resolve *.localhost)
+---@field theme 'auto'|'light'|'dark' page theme; auto follows the OS. The page's own button overrides it per browser
+---@field images_dir string folder, relative to the markdown file, where pasted images are saved
+M.config = { port = 6274, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', friendly_url = true, images_dir = 'assets' }
 
 local S -- running state
 
 local AUG = 'markbridge'
 
-function M.setup(opts) M.config = vim.tbl_deep_extend('force', M.config, opts or {}) end
+local THEMES = { auto = true, light = true, dark = true }
+
+function M.setup(opts)
+  M.config = vim.tbl_deep_extend('force', M.config, opts or {})
+  if not THEMES[M.config.theme] then
+    vim.notify(("markbridge: theme must be auto, light or dark, got '%s'"):format(tostring(M.config.theme)), vim.log.levels.WARN)
+    M.config.theme = 'auto'
+  end
+end
+
+---Set the page's default theme; open pages adopt it on their next poll.
+function M.set_theme(theme)
+  if not THEMES[theme] then return vim.notify('markbridge: theme must be auto, light or dark', vim.log.levels.ERROR) end
+  M.config.theme = theme
+end
 
 function M.is_running() return S ~= nil end
 
 function M.url()
-  if S then return ('http://127.0.0.1:%d/?t=%s'):format(S.port, S.token) end
+  if not S then return end
+  local host = M.config.friendly_url and 'markbridge.localhost' or '127.0.0.1'
+  return ('http://%s:%d/?t=%s'):format(host, S.port, S.token)
 end
 
 local function snapshot(buf)
@@ -78,18 +97,33 @@ local function arm_watcher()
 end
 
 local function retarget(buf)
-  S.buf, S.disk_changed = buf, false
+  local name = vim.api.nvim_buf_get_name(buf)
+  S.name = vim.fn.fnamemodify(name, ':t')
+  S.buf, S.disk_changed, S.dir = buf, false, name ~= '' and vim.fs.dirname(vim.fn.fnamemodify(name, ':p')) or nil
   S.cursor = vim.api.nvim_buf_call(buf, function() return vim.fn.line '.' end)
   arm_watcher()
 end
 
+local EXT = { ['image/png'] = 'png', ['image/jpeg'] = 'jpg', ['image/gif'] = 'gif', ['image/webp'] = 'webp' }
+local MAX_IMAGE = 20 * 1024 * 1024
+
 local function handle(client, req)
   if not S then return end
+  -- A rebinding attack arrives with the attacker's hostname; only our own origin is served.
+  -- Any <label>.localhost is loopback by definition (the browser resolves it itself), so it
+  -- can't be a rebinding target; arbitrary hostnames can.
+  local h = req.host or ''
+  local ok_host = h == ('127.0.0.1:%d'):format(S.port) or h == ('localhost:%d'):format(S.port)
+    or (h:match('^[%w%-]+%.localhost:(%d+)$') == tostring(S.port))
+  if not ok_host then
+    return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden')
+  end
   if req.method == 'GET' and req.path == '/' then
     if req.query:match 't=(%x+)' ~= S.token then return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden') end
-    return server.page(client)
+    return server.page(client, S.name)
   end
   if req.method == 'GET' and server.static(client, req.path) then return end
+  if req.method == 'GET' and S.dir and server.image(client, S.dir, req.path) then return end
   vim.schedule(function()
     if not S then return end
     if not req.token or req.token ~= S.token then return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden') end
@@ -100,6 +134,7 @@ local function handle(client, req)
     end
     local snap = snapshot(buf)
     local extra = {
+      theme = M.config.theme,
       cursor = M.config.scroll_sync and S.cursor or nil,
       disk_changed = (S.disk_changed and vim.bo[buf].modified) or nil,
     }
@@ -129,6 +164,40 @@ local function handle(client, req)
         return server.json(client, '409 Conflict', vim.tbl_extend('force', snapshot(buf), extra))
       end
       return server.json(client, '200 OK', { ok = true, tick = vim.api.nvim_buf_get_changedtick(buf) })
+    end
+    if req.method == 'POST' and req.path == '/cursor' then
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf or type(r.line) ~= 'number' then return server.respond(client, '400 Bad Request', 'text/plain', 'bad cursor') end
+      local line = math.max(1, math.min(math.floor(r.line), vim.api.nvim_buf_line_count(buf)))
+      S.cursor = line
+      local win = vim.fn.bufwinid(buf)
+      if win > 0 then pcall(vim.api.nvim_win_set_cursor, win, { line, 0 }) end
+      return server.json(client, '200 OK', { ok = true })
+    end
+    if req.method == 'POST' and (req.path == '/undo' or req.path == '/refresh') then
+      if req.path == '/refresh' then
+        if not vim.bo[buf].modified then vim.cmd(('silent! checktime %d'):format(buf)) end
+        return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
+      end
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf then return server.respond(client, '400 Bad Request', 'text/plain', 'bad buffer') end
+      vim.api.nvim_buf_call(buf, function() vim.cmd(r.redo and 'silent! redo' or 'silent! undo') end)
+      return server.json(client, '200 OK', { ok = true })
+    end
+    if req.method == 'POST' and req.path == '/image' then
+      local ext = EXT[req.ctype or '']
+      if not ext or not S.dir or #req.body == 0 or #req.body > MAX_IMAGE then return server.respond(client, '400 Bad Request', 'text/plain', 'cannot save this image') end
+      local sub = M.config.images_dir
+      local dir = vim.fs.joinpath(S.dir, sub)
+      vim.fn.mkdir(dir, 'p')
+      local name = ('pasted-%s-%04d.%s'):format(os.date '%Y%m%d-%H%M%S', math.random(0, 9999), ext)
+      local f = io.open(vim.fs.joinpath(dir, name), 'wb')
+      if not f then return server.respond(client, '500 Internal Server Error', 'text/plain', 'cannot write') end
+      f:write(req.body)
+      f:close()
+      return server.json(client, '200 OK', { ok = true, path = sub .. '/' .. name })
     end
     server.respond(client, '404 Not Found', 'text/plain', 'not found')
   end)
@@ -164,6 +233,7 @@ function M.start()
   st.server = server.listen(st, handle)
   if not st.server then return vim.notify('markbridge: cannot listen on 127.0.0.1:' .. tostring(M.config.port), vim.log.levels.ERROR) end
   st.port = st.server:getsockname().port
+  if st.fell_back then vim.notify(('markbridge: port %d is busy, using %d'):format(M.config.port, st.port), vim.log.levels.INFO) end
   S = st
   retarget(buf)
   local g = vim.api.nvim_create_augroup(AUG, { clear = true })

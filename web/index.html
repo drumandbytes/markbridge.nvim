@@ -3,31 +3,156 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Two-way markdown preview: edit the rendered page and the change lands in your Neovim buffer.">
 <title>markbridge</title>
-<link rel="stylesheet" href="/vendor/github-markdown.css">
+<link rel="icon" type="image/svg+xml" href="/web/favicon.svg">
+<link rel="stylesheet" href="/vendor/github-markdown.themed.css">
 <link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<script>
+  // Before first paint, so a dark page never flashes light. app.js keeps it in sync afterwards.
+  (() => {
+    let m = 'auto';
+    try { m = localStorage.getItem('markbridge-theme') || 'auto'; } catch {}
+    const dark = m === 'dark' || (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  })();
+</script>
 <style>
-  :root { color-scheme: light dark; --bg: #fff; --fg: #1f2328; --ring: rgba(56,139,253,.6); --note: #9a6700; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --note: #d29922; } }
-  body { margin: 0; background: var(--bg); color: var(--fg); }
-  .markdown-body { box-sizing: border-box; max-width: 860px; margin: 0 auto; padding: 32px 24px 120px; background: transparent; }
-  [contenteditable="true"] { outline: none; border-radius: 4px; }
-  [contenteditable="true"]:hover { box-shadow: 0 0 0 2px rgba(128,128,128,.25); }
-  [contenteditable="true"]:focus, td:focus-within, th:focus-within { box-shadow: 0 0 0 2px var(--ring); }
-  [data-ghost]:empty::before { content: "…"; opacity: .4; }
-  .mb-frontmatter { opacity: .55; font-size: 12px; }
+/* Hallmark · shape: Document with a top bar · genre: modern-minimal · theme: custom · job: try · idea: "Edit a markdown file in the browser and see it land in Neovim." · vibe: "quiet, paper-like, tool not toy"
+ * paper: oklch(1 0 0) · accent: oklch(0.52 0.18 255) · display: system-ui · body: system-ui · hero: none, the document is the first screen · nav: a single top bar of tools · footer: none · imagery: the user's own document · signature: the page you type in is the markdown file
+ * axes: light+dark/system/blue · posture: app · contrast: pass · fold: pass · modes: light+dark · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: S, kept the chrome to one bar and let the document carry the page */
+  /* Tokens. Light is the base; dark re-derives each one and keeps the hue. */
+  :root {
+    color-scheme: light;
+    --paper: #ffffff;
+    --paper-2: #f6f8fa;
+    --ink: #1f2328;
+    --muted: #59636e;
+    --rule: #d1d9e0;
+    --hover: #eaeef2;
+    --on: #ddf4ff;
+    --ring: #0969da;
+    --warn: #9a6700;
+    --veil: #1f232866;
+    --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #0d1117;
+    --paper-2: #151b23;
+    --ink: #e6edf3;
+    --muted: #9198a1;
+    --rule: #3d444d;
+    --hover: #212830;
+    --on: #1c2d41;
+    --ring: #4493f8;
+    --warn: #d29922;
+    --veil: #010409aa;
+  }
+
+  html, body { overflow-x: clip; }
+  body { margin: 0; padding-top: 44px; background: var(--paper); color: var(--ink); font-family: var(--font-ui); }
+  .markdown-body { box-sizing: border-box; max-width: 860px; min-width: 0; margin: 0 auto; padding: 32px 24px 120px; background: transparent; }
+  .markdown-body img { max-width: 100%; }
   .markdown-body pre code.hljs { background: transparent; }
-  #tbl { position: absolute; display: flex; gap: 4px; font: 12px system-ui, sans-serif; }
-  #tbl[hidden] { display: none; }
-  #tbl button { border: 1px solid rgba(128,128,128,.4); background: var(--bg); color: var(--fg); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+  /* Editable text: quiet until you reach for it. */
+  [contenteditable="true"] { outline: none; border-radius: 4px; }
+  [contenteditable="true"]:hover { background: var(--hover); }
+  [contenteditable="true"]:focus, td:focus-within, th:focus-within { background: transparent; box-shadow: 0 0 0 2px var(--ring); }
+  [data-ghost]:empty::before { content: "…"; color: var(--muted); }
+  .mb-raw { cursor: text; border-radius: 4px; }
+  .mb-raw:hover { box-shadow: 0 0 0 2px var(--hover); }
+  textarea.mb-raw-edit { display: block; width: 100%; box-sizing: border-box; min-height: 3em; padding: 12px; margin: 0 0 16px; border: 0; border-radius: 6px; background: var(--paper-2); color: var(--ink); font: 12px/1.5 var(--font-mono); resize: none; outline: 2px solid var(--ring); }
+
+  .mb-fm { margin: 0 0 20px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 6px; font-size: 13px; }
+  .mb-fm label { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
+  .mb-fm span { min-width: 7em; color: var(--muted); }
+  .mb-fm input { flex: 1; min-width: 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; outline: none; }
+  .mb-fm input:focus { border-bottom-color: var(--ring); }
+  .mb-fm .ro { color: var(--muted); font-family: var(--font-mono); white-space: pre; }
+
+  /* Top bar */
+  #top { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 8px 12px; background: var(--paper); border-bottom: 1px solid var(--rule); font-size: 13px; }
+  #top button { min-width: 32px; height: 28px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; }
+  #top button:hover { background: var(--hover); }
+  #top button.on, #top button:active { background: var(--on); }
+  #top button:disabled { color: var(--muted); background: var(--paper-2); cursor: default; }
+  #top .sep { width: 1px; height: 18px; margin: 0 8px; background: var(--rule); }
+  #top [data-f="theme"] { min-width: 52px; color: var(--muted); }
+  #bar { order: 99; margin-left: auto; padding-left: 12px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  #bar.warn { color: var(--warn); }
+
+  /* Table buttons and block handle */
+  #tbl { position: absolute; display: flex; gap: 4px; font-size: 12px; }
+  #tbl[hidden], #hnd[hidden], #menu[hidden], #help[hidden] { display: none; }
+  #tbl button { padding: 2px 8px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); cursor: pointer; }
   #tbl button:hover { border-color: var(--ring); }
-  #bar { position: fixed; right: 12px; bottom: 8px; font: 12px/1.4 system-ui, sans-serif; opacity: .65; color: gray; }
-  #bar.warn { color: var(--note); opacity: 1; }
+  #hnd { position: absolute; z-index: 5; font-size: 12px; }
+  #hnd > button { padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+  #hnd > button:hover { background: var(--hover); color: var(--ink); }
+  #menu { position: absolute; left: 0; top: 24px; width: 180px; max-height: 70vh; overflow: auto; padding: 4px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper-2); }
+  #menu button { display: block; width: 100%; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+  #menu button:hover { background: var(--hover); }
+  #menu button:active, #tbl button:active { background: var(--on); }
+  #menu h6 { margin: 8px 8px 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
+
+  /* Help */
+  #help { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: var(--veil); font-size: 14px; line-height: 1.5; }
+  #help .card { position: relative; width: min(560px, 92vw); max-height: 86vh; overflow: auto; padding: 20px 24px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); color: var(--ink); }
+  #help h2 { margin: 0 0 8px; font-size: 18px; text-wrap: balance; }
+  #help h3 { margin: 16px 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  #help h3 small { font-weight: 400; }
+  #help table { border-collapse: collapse; }
+  #help td { padding: 2px 16px 2px 0; vertical-align: top; }
+  #help ul { margin: 4px 0; padding-left: 16px; }
+  #help kbd { padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; font: 12px var(--font-mono); }
+  #help .close { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; font-size: 20px; cursor: pointer; }
 </style>
 </head>
 <body>
 <article class="markdown-body" id="doc"></article>
-<div id="bar">connecting…</div>
+<div id="top"><span id="bar">connecting…</span></div>
+<div id="help" hidden>
+  <div class="card">
+    <button class="close" title="Close (Esc)">×</button>
+    <h2>markbridge</h2>
+    <p>Edit the page; the markdown in Neovim changes within about half a second. Neovim stays the source of truth: if it changed first, your edit is dropped and the page reloads.</p>
+    <h3>Shortcuts <small>(Cmd on macOS, Ctrl elsewhere)</small></h3>
+    <table>
+      <tr><td><kbd>B</kbd> <kbd>I</kbd></td><td>Bold, italic</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>Strikethrough</td></tr>
+      <tr><td><kbd>E</kbd></td><td>Inline code (selection)</td></tr>
+      <tr><td><kbd>K</kbd></td><td>Link</td></tr>
+      <tr><td><kbd>Alt</kbd>+<kbd>0</kbd>…<kbd>6</kbd></td><td>Paragraph, heading 1 to 6</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>7</kbd> <kbd>8</kbd> <kbd>9</kbd></td><td>Numbered, bullet, task list</td></tr>
+      <tr><td><kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Undo / redo in Neovim</td></tr>
+      <tr><td><kbd>/</kbd></td><td>This help</td></tr>
+    </table>
+    <h3>Blocks</h3>
+    <ul>
+      <li><b>Enter</b> splits a block, or opens a new one at the end. <b>Shift+Enter</b> is a line break.</li>
+      <li>Tables: <b>Tab</b> / <b>Enter</b> move between cells, Tab in the last cell adds a row; buttons above the table add or remove rows and columns.</li>
+      <li>Code, mermaid and math: click to edit the source, <b>Esc</b> to render it.</li>
+      <li>Hover a block and use the <b>⋮⋮</b> handle to move, delete, convert it or insert a block below.</li>
+      <li>Paste or drop an image into a paragraph: it is saved next to the file and linked.</li>
+      <li>Click a block to move the Neovim cursor to it.</li>
+      <li>Frontmatter fields at the top are editable; lists there are read-only.</li>
+    </ul>
+    <h3>Good to know</h3>
+    <ul>
+      <li>Edits change the Neovim buffer but don’t save it: <code>:w</code> in Neovim.</li>
+      <li>An edited block is rewritten from the page; emphasis may normalise to <code>*x*</code> and <code>**x**</code>, tables are re-padded.</li>
+      <li><b>Auto / Light / Dark</b> switches the page theme; the default comes from your Neovim config (<code>theme</code>).</li>
+      <li><b>↻</b> reloads from Neovim and re-reads the file from disk (unless the buffer has unsaved edits).</li>
+    </ul>
+  </div>
+</div>
 <script src="/vendor/markdown-it.min.js"></script>
 <script src="/vendor/markdown-it-emoji.min.js"></script>
 <script src="/vendor/katex/katex.min.js"></script>

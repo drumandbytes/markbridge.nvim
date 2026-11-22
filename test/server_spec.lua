@@ -104,6 +104,87 @@ check('follows to the new buffer', wait(function()
   return s.id == buf2 and s.lines[1] == 'second file'
 end))
 
+-- host header, cursor, images
+local function raw(args)
+  local r, done = nil, false
+  vim.system(args, {}, function(o) r, done = o, true end)
+  vim.wait(8000, function() return done end, 10)
+  return r.stdout
+end
+check('friendly host accepted', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: notes.localhost:' .. port, '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '200')
+check('friendly host on another port rejected', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: notes.localhost:1', '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '403')
+check('url uses markbridge.localhost', mb.url():match '^http://markbridge%.localhost:%d+/%?t=%x+$' ~= nil, mb.url())
+local pg = raw({ 'curl', '-s', '-H', 'Host: x.localhost:' .. port, 'http://127.0.0.1:' .. port .. '/?t=' .. token })
+check('page title carries the file name', pg:match '<title>[^<]+ · markbridge</title>' ~= nil)
+check('favicon served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', 'http://127.0.0.1:' .. port .. '/web/favicon.svg' }) == '200')
+check('foreign Host header rejected', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: evil.example:' .. port, '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '403')
+
+local dir2 = vim.fn.tempname()
+vim.fn.mkdir(dir2, 'p')
+local md3 = dir2 .. '/note.md'
+vim.fn.writefile({ 'a', 'b', 'c' }, md3)
+vim.cmd.edit(md3)
+vim.bo.filetype = 'markdown'
+vim.cmd.doautocmd 'BufEnter'
+local buf3 = vim.api.nvim_get_current_buf()
+wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.id == buf3 end)
+code = http('POST', '/cursor', { id = buf3, line = 3 })
+check('cursor moves nvim', code == 200 and vim.api.nvim_win_get_cursor(0)[1] == 3)
+code = http('POST', '/cursor', { id = buf3 + 99, line = 1 })
+check('cursor for another buffer rejected', code == 400)
+
+local png = vim.fn.tempname() .. '.png'
+local pf = io.open(png, 'wb'); pf:write('\137PNG\r\n\26\nfakebytes'); pf:close()
+local out = raw({ 'curl', '-s', '-X', 'POST', '-H', 'X-Token: ' .. token, '-H', 'Content-Type: image/png', '--data-binary', '@' .. png, 'http://127.0.0.1:' .. port .. '/image' })
+local saved = vim.json.decode(out)
+check('image saved under assets/', saved.ok and saved.path:match '^assets/pasted%-.+%.png$' and vim.uv.fs_stat(dir2 .. '/' .. saved.path), out)
+check('saved image is served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', 'http://127.0.0.1:' .. port .. '/' .. saved.path }) == '200')
+check('non-image type refused', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-X', 'POST', '-H', 'X-Token: ' .. token, '-H', 'Content-Type: text/html', '-d', 'x', 'http://127.0.0.1:' .. port .. '/image' }) == '400')
+vim.fn.writefile({ 'secret' }, vim.fn.tempname() .. '.png')
+check('image outside the folder not served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--path-as-is', 'http://127.0.0.1:' .. port .. '/../../etc/hosts.png' }) ~= '200')
+
+-- theme
+local _, st1 = http('GET', '/state?tick=-1&id=-1')
+check('state carries the default theme', st1.theme == 'auto', st1.theme)
+vim.cmd 'Markbridge theme dark'
+local _, st2 = http('GET', '/state?tick=-1&id=-1')
+check(':Markbridge theme changes it', st2.theme == 'dark', st2.theme)
+mb.set_theme('auto')
+
+-- undo / redo / refresh
+vim.cmd 'silent! write'
+code = http('POST', '/edit', { tick = vim.api.nvim_buf_get_changedtick(buf3), id = buf3, s = 0, e = 1, old = { 'a' }, lines = { 'A' } })
+check('edit before undo', code == 200 and vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'A')
+http('POST', '/undo', { id = buf3 })
+check('undo over http', vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'a')
+http('POST', '/undo', { id = buf3, redo = true })
+check('redo over http', vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'A')
+vim.cmd 'silent! write'
+local wasoff = mb.config.watch
+vim.fn.writefile({ 'from disk', 'b', 'c' }, md3)
+http('POST', '/refresh', {})
+check('refresh re-reads the file', wait(function() return vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'from disk' end))
+
+check('oversized body refused', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-m', '3', '-X', 'POST', '-H', 'Content-Length: 99999999999', '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/edit' }) == '413')
+
+-- preferred port: used when free, replaced by a free one when busy
+mb.stop()
+local blocker = vim.uv.new_tcp()
+blocker:bind('127.0.0.1', 0)
+blocker:listen(1, function() end) -- on Linux a bound-only socket doesn't block another bind
+local busy = blocker:getsockname().port
+mb.config.port = busy
+mb.start()
+local got = tonumber(mb.url():match ':(%d+)/')
+check('busy preferred port falls back', mb.is_running() and got ~= busy and got > 0, { busy, got })
+mb.stop()
+blocker:close()
+vim.wait(100)
+mb.config.port = busy
+mb.start()
+check('free preferred port is used', tonumber(mb.url():match ':(%d+)/') == busy)
+mb.stop()
+
 -- stop
 vim.cmd 'bwipeout!'
 check('server stops when previewed buffer dies', true)
