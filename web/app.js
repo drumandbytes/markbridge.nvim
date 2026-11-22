@@ -371,7 +371,7 @@
     ['code', '&lt;/&gt;', 'Inline code (Cmd/Ctrl+E)'], ['link', 'Link', 'Link (Cmd/Ctrl+K)'], '|',
     ['p', '¶', 'Paragraph (Cmd/Ctrl+Alt+0)'], ['h1', 'H1', 'Heading 1 (Cmd/Ctrl+Alt+1)'], ['h2', 'H2', 'Heading 2'], ['h3', 'H3', 'Heading 3'], '|',
     ['ul', '•', 'Bullet list (Cmd/Ctrl+Shift+8)'], ['ol', '1.', 'Numbered list (Cmd/Ctrl+Shift+7)'], ['task', '☑', 'Task list (Cmd/Ctrl+Shift+9)'], '|',
-    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['refresh', '↻', 'Reload from nvim and from disk'], ['theme', 'Auto', 'Theme: auto, light or dark'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
+    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['save', 'Save', 'Write the file (Cmd/Ctrl+S)'], ['refresh', '↻', 'Reload from nvim and from disk'], ['theme', 'Auto', 'Theme: auto, light or dark'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
   ];
   const top = document.getElementById('top');
   top.insertAdjacentHTML('afterbegin', BTN.map(b => b === '|' ? '<i class="sep"></i>' : `<button data-f="${b[0]}" title="${b[2]}">${b[1]}</button>`).join(''));
@@ -385,11 +385,31 @@
     if (f === 'help') return toggleHelp();
     if (f === 'theme') return setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
     if (f === 'refresh') return refresh();
+    if (f === 'save') return save();
     if (f === 'undo' || f === 'redo') return nvimUndo(f);
     const el = activeBlock();
     if (!el || el.dataset.k === 'table') return status('click into a paragraph, heading or list item first', true);
     format(f, el);
   });
+
+  let modified = false;
+  const showSaved = () => {
+    const b = top.querySelector('[data-f="save"]');
+    b.disabled = !modified;
+    b.classList.toggle('on', modified);
+    document.title = (modified ? '• ' : '') + name + ' · markbridge';
+  };
+
+  // Writes the buffer with :write. Edits only change the buffer, so this is the page's save.
+  async function save() {
+    await settle();
+    try {
+      const r = await fetch('/save', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId }) });
+      const j = await r.json();
+      if (r.ok) { modified = j.modified; showSaved(); status('saved ' + new Date().toLocaleTimeString()); }
+      else status(j.error || 'could not save', true);
+    } catch { status('reconnecting…', true); }
+  }
 
   async function nvimUndo(which) {
     await settle();
@@ -408,6 +428,7 @@
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && !help.hidden) help.hidden = true;
     if ((ev.metaKey || ev.ctrlKey) && ev.key === '/') { ev.preventDefault(); toggleHelp(); }
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); }
     // Undo is nvim's: each browser edit is one nvim undo step, so the two stay in step.
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !(ev.target.closest && ev.target.closest('textarea, input'))) {
       ev.preventDefault();
@@ -421,7 +442,7 @@
     const el = activeBlock();
     for (const b of top.querySelectorAll('[data-f]')) {
       const f = b.dataset.f;
-      b.disabled = TEXT_TOOLS.test(f) && (!el || el.dataset.k === 'table');
+      b.disabled = f === 'save' ? !modified : TEXT_TOOLS.test(f) && (!el || el.dataset.k === 'table');
       let on = false;
       if (el) {
         if (f === 'bold' || f === 'italic') on = document.queryCommandState(f);
@@ -557,8 +578,9 @@
           const keep = document.activeElement && document.activeElement.isContentEditable ? null : window.scrollY;
           render();
           if (keep != null) window.scrollTo(0, keep);
-          document.title = name + ' · markbridge';
+          showSaved();
         }
+        if (typeof j.modified === 'boolean' && j.modified !== modified) { modified = j.modified; showSaved(); }
         if (j.disk_changed) status('file changed on disk, buffer has unsaved edits (nvim kept yours)', true);
         else if (!pending) status('synced');
         if (j.cursor && j.cursor !== lastCursor) { lastCursor = j.cursor; if (!document.activeElement.isContentEditable) scrollTo(j.cursor); }

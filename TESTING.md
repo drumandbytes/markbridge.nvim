@@ -18,6 +18,7 @@ mermaid block and some math:
 - [ ] Click a code block, a mermaid diagram and a `$$` block: the source opens, edits reach nvim, Esc re-renders
 - [ ] Frontmatter field edits reach nvim; list-valued fields stay read-only
 - [ ] Block handle: move up/down, delete, turn into, insert below (all kinds), each one undo step in nvim
+- [ ] Save: button and Cmd/Ctrl+S write the file, the tab dot clears; refused (with a message) when the file changed on disk
 - [ ] Top bar: B/I/S/code/link on a selection, ¶/H1-H3, lists, undo/redo (also Cmd/Ctrl+Z), refresh, help panel (Esc closes)
 - [ ] The opened URL is `markbridge.localhost:<port>` and loads in each browser (Safari included); tab shows the file name and the favicon
 - [ ] Theme: Auto follows the OS both ways, Light and Dark force it, the choice survives a reload, `:Markbridge theme X` is adopted by an open page, mermaid and code colours follow

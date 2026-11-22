@@ -151,6 +151,25 @@ local _, st2 = http('GET', '/state?tick=-1&id=-1')
 check(':Markbridge theme changes it', st2.theme == 'dark', st2.theme)
 mb.set_theme('auto')
 
+-- save
+vim.wait(400) -- let watcher events from the setup above settle
+vim.api.nvim_buf_set_lines(buf3, 0, 1, false, { 'saved from the page' })
+local _, s3 = http('GET', '/state?tick=-1&id=-1')
+check('state reports unsaved changes', s3.modified == true)
+code, st = http('POST', '/save', { id = buf3 })
+check('save writes the file', code == 200 and st.ok and st.modified == false and vim.fn.readfile(md3)[1] == 'saved from the page', st)
+code = http('POST', '/save', { id = buf3 + 99 })
+check('save for another buffer refused', code == 400)
+vim.api.nvim_buf_set_lines(buf3, 0, 1, false, { 'edited again' })
+vim.fn.writefile({ 'changed elsewhere' }, md3)
+check('disk change with unsaved edits is flagged', wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end))
+code, st = http('POST', '/save', { id = buf3 })
+check('save refuses to overwrite a file changed on disk', code == 409 and vim.fn.readfile(md3)[1] == 'changed elsewhere', st)
+vim.fn.writefile({ 'a', 'b', 'c' }, md3)
+vim.cmd 'silent! edit!' -- back to known content for the undo checks
+vim.wait(400)
+vim.cmd 'let &undolevels = &undolevels' -- a script run has no key presses, so force an undo break
+
 -- undo / redo / refresh
 vim.cmd 'silent! write'
 code = http('POST', '/edit', { tick = vim.api.nvim_buf_get_changedtick(buf3), id = buf3, s = 0, e = 1, old = { 'a' }, lines = { 'A' } })

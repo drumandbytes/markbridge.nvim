@@ -94,7 +94,7 @@ Not editable: HTML blocks, indented code, setext headings (`Title` over `====`),
 reference links, footnotes or `<https://...>` autolinks (they can't be rebuilt faithfully from the page).
 
 **Top bar.** Bold, italic, strikethrough, inline code, link; paragraph, H1 to H3; bullet, numbered and
-task list; undo and redo (these run nvim's undo, so browser and nvim stay in step; Cmd/Ctrl+Z does the
+task list; **Save** (Cmd/Ctrl+S, writes the file with `:write`; it is enabled while the buffer has unsaved changes, and the tab title shows a dot); undo and redo (these run nvim's undo, so browser and nvim stay in step; Cmd/Ctrl+Z does the
 same); refresh (reloads from nvim and re-reads the file from disk when the buffer has no unsaved edits);
 help (Cmd/Ctrl+/) with the shortcut list. Buttons reflect the formatting at the caret.
 
@@ -126,7 +126,7 @@ byte untouched. Inside it:
   replaces. If you changed the buffer first, the edit is rejected, the page reloads from
   nvim and says so. Nothing is merged and nothing is clobbered.
 - **Undo.** One browser edit is one undo step in nvim.
-- **Saving.** Browser edits modify the buffer but don't write it. `:w` as usual.
+- **Saving.** Browser edits modify the buffer. Save from the page (button or Cmd/Ctrl+S) or `:w` in nvim. The page won't write over a file that changed on disk: it says so and leaves the decision to you in nvim (`:w!` or `:e!`). A buffer without a file name needs `:w <name>` first.
 - **Files changed outside nvim** (another tool, another person, an AI agent): a file
   watcher runs `:checktime`, so an unmodified buffer reloads and the page updates. A
   buffer with unsaved edits is never touched: nvim keeps yours and the page shows a

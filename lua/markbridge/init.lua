@@ -135,6 +135,7 @@ local function handle(client, req)
     local snap = snapshot(buf)
     local extra = {
       theme = M.config.theme,
+      modified = vim.bo[buf].modified,
       cursor = M.config.scroll_sync and S.cursor or nil,
       disk_changed = (S.disk_changed and vim.bo[buf].modified) or nil,
     }
@@ -185,6 +186,17 @@ local function handle(client, req)
       if r.id ~= buf then return server.respond(client, '400 Bad Request', 'text/plain', 'bad buffer') end
       vim.api.nvim_buf_call(buf, function() vim.cmd(r.redo and 'silent! redo' or 'silent! undo') end)
       return server.json(client, '200 OK', { ok = true })
+    end
+    if req.method == 'POST' and req.path == '/save' then
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf then return server.respond(client, '400 Bad Request', 'text/plain', 'bad buffer') end
+      if vim.api.nvim_buf_get_name(buf) == '' then return server.json(client, '400 Bad Request', { error = 'this buffer has no file name: :w <name> in nvim first' }) end
+      -- :write on a file that changed on disk stops at a y/n prompt nobody can answer from the page.
+      if S.disk_changed then return server.json(client, '409 Conflict', { error = 'the file changed on disk: resolve it in nvim (:w! or :e!)' }) end
+      local wrote, err = pcall(vim.api.nvim_buf_call, buf, function() vim.cmd 'silent write' end)
+      if not wrote then return server.json(client, '500 Internal Server Error', { error = tostring(err):gsub('^.-E%d+:', 'E') }) end
+      return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
     end
     if req.method == 'POST' and req.path == '/image' then
       local ext = EXT[req.ctype or '']

@@ -132,6 +132,7 @@
       <tr><td><kbd>Alt</kbd>+<kbd>0</kbd>…<kbd>6</kbd></td><td>Paragraph, heading 1 to 6</td></tr>
       <tr><td><kbd>Shift</kbd>+<kbd>7</kbd> <kbd>8</kbd> <kbd>9</kbd></td><td>Numbered, bullet, task list</td></tr>
       <tr><td><kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Undo / redo in Neovim</td></tr>
+      <tr><td><kbd>S</kbd></td><td>Save the file</td></tr>
       <tr><td><kbd>/</kbd></td><td>This help</td></tr>
     </table>
     <h3>Blocks</h3>
@@ -146,7 +147,7 @@
     </ul>
     <h3>Good to know</h3>
     <ul>
-      <li>Edits change the Neovim buffer but don’t save it: <code>:w</code> in Neovim.</li>
+      <li>Edits change the Neovim buffer. <b>Save</b> (Cmd/Ctrl+S) writes the file; the tab title shows a dot while there are unsaved changes.</li>
       <li>An edited block is rewritten from the page; emphasis may normalise to <code>*x*</code> and <code>**x**</code>, tables are re-padded.</li>
       <li><b>Auto / Light / Dark</b> switches the page theme; the default comes from your Neovim config (<code>theme</code>).</li>
       <li><b>↻</b> reloads from Neovim and re-reads the file from disk (unless the buffer has unsaved edits).</li>
