@@ -16,6 +16,11 @@ text, you end up switching back to the source for every tweak. markbridge patche
 buffer by line range, one block at a time, so a browser edit never rewrites the rest of
 your file.
 
+## Releases
+
+Versioned with release-please from conventional commit titles (`feat:`, `fix:`). Pin a
+release with `version = 'v0.2.0'` in `vim.pack.add`, or follow `main`.
+
 ## Requirements
 
 - Neovim 0.10 or newer
