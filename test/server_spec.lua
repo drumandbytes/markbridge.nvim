@@ -111,6 +111,12 @@ local function raw(args)
   vim.wait(8000, function() return done end, 10)
   return r.stdout
 end
+check('friendly host accepted', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: notes.localhost:' .. port, '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '200')
+check('friendly host on another port rejected', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: notes.localhost:1', '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '403')
+check('url uses <file>.localhost', mb.url():match '^http://[%w%-]+%.localhost:%d+/%?t=%x+$' ~= nil, mb.url())
+local pg = raw({ 'curl', '-s', '-H', 'Host: x.localhost:' .. port, 'http://127.0.0.1:' .. port .. '/?t=' .. token })
+check('page title carries the file name', pg:match '<title>[^<]+ · markbridge</title>' ~= nil)
+check('favicon served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', 'http://127.0.0.1:' .. port .. '/web/favicon.svg' }) == '200')
 check('foreign Host header rejected', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: evil.example:' .. port, '-H', 'X-Token: ' .. token, 'http://127.0.0.1:' .. port .. '/state' }) == '403')
 
 local dir2 = vim.fn.tempname()

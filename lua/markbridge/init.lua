@@ -8,9 +8,10 @@ local M = {}
 ---@field follow boolean retarget the preview when you enter another markdown buffer
 ---@field scroll_sync boolean scroll the page to the block under the nvim cursor
 ---@field watch boolean reload the buffer when the file changes on disk (never over unsaved edits)
+---@field friendly_url boolean open http://<file>.localhost:<port> instead of 127.0.0.1 (set false if your browser can't resolve *.localhost)
 ---@field theme 'auto'|'light'|'dark' page theme; auto follows the OS. The page's own button overrides it per browser
 ---@field images_dir string folder, relative to the markdown file, where pasted images are saved
-M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', images_dir = 'assets' }
+M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true, theme = 'auto', friendly_url = true, images_dir = 'assets' }
 
 local S -- running state
 
@@ -34,8 +35,16 @@ end
 
 function M.is_running() return S ~= nil end
 
+-- Name for the address bar: the file's name as a host label, e.g. notes.localhost.
+local function slug(name)
+  local s = vim.fn.fnamemodify(name, ':t:r'):lower():gsub('[^%w]+', '-'):gsub('^%-+', ''):gsub('%-+$', ''):sub(1, 40)
+  return s ~= '' and s or 'markbridge'
+end
+
 function M.url()
-  if S then return ('http://127.0.0.1:%d/?t=%s'):format(S.port, S.token) end
+  if not S then return end
+  local host = M.config.friendly_url and (S.slug .. '.localhost') or '127.0.0.1'
+  return ('http://%s:%d/?t=%s'):format(host, S.port, S.token)
 end
 
 local function snapshot(buf)
@@ -95,6 +104,7 @@ end
 
 local function retarget(buf)
   local name = vim.api.nvim_buf_get_name(buf)
+  S.name, S.slug = vim.fn.fnamemodify(name, ':t'), slug(name)
   S.buf, S.disk_changed, S.dir = buf, false, name ~= '' and vim.fs.dirname(vim.fn.fnamemodify(name, ':p')) or nil
   S.cursor = vim.api.nvim_buf_call(buf, function() return vim.fn.line '.' end)
   arm_watcher()
@@ -106,12 +116,17 @@ local MAX_IMAGE = 20 * 1024 * 1024
 local function handle(client, req)
   if not S then return end
   -- A rebinding attack arrives with the attacker's hostname; only our own origin is served.
-  if req.host ~= ('127.0.0.1:%d'):format(S.port) and req.host ~= ('localhost:%d'):format(S.port) then
+  -- Any <label>.localhost is loopback by definition (the browser resolves it itself), so it
+  -- can't be a rebinding target; arbitrary hostnames can.
+  local h = req.host or ''
+  local ok_host = h == ('127.0.0.1:%d'):format(S.port) or h == ('localhost:%d'):format(S.port)
+    or (h:match('^[%w%-]+%.localhost:(%d+)$') == tostring(S.port))
+  if not ok_host then
     return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden')
   end
   if req.method == 'GET' and req.path == '/' then
     if req.query:match 't=(%x+)' ~= S.token then return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden') end
-    return server.page(client)
+    return server.page(client, S.name)
   end
   if req.method == 'GET' and server.static(client, req.path) then return end
   if req.method == 'GET' and S.dir and server.image(client, S.dir, req.path) then return end

@@ -4,7 +4,7 @@ local uv = vim.uv
 local M = {}
 
 local ROOT = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, 'S').source:sub(2))))
-local TYPES = { js = 'application/javascript', css = 'text/css', woff2 = 'font/woff2', html = 'text/html; charset=utf-8' }
+local TYPES = { svg = 'image/svg+xml', js = 'application/javascript', css = 'text/css', woff2 = 'font/woff2', html = 'text/html; charset=utf-8' }
 local IMAGES = { png = 'image/png', jpg = 'image/jpeg', jpeg = 'image/jpeg', gif = 'image/gif', webp = 'image/webp', svg = 'image/svg+xml' }
 
 local function read(path)
@@ -96,7 +96,14 @@ function M.image(client, dir, path)
   return true
 end
 
-function M.page(client) respond(client, '200 OK', 'text/html; charset=utf-8', read(ROOT .. '/web/index.html') or 'web/index.html missing') end
+-- The file's name goes into <title> here, so the tab is named before any script runs.
+function M.page(client, name)
+  local html = read(ROOT .. '/web/index.html')
+  if not html then return respond(client, '404 Not Found', 'text/plain', 'web/index.html missing') end
+  local esc = (name or ''):gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;')
+  if esc ~= '' then html = html:gsub('<title>[^<]*</title>', function() return '<title>' .. esc .. ' · markbridge</title>' end, 1) end
+  respond(client, '200 OK', 'text/html; charset=utf-8', html)
+end
 
 M.respond, M.json, M.ROOT, M.IMAGES = respond, json, ROOT, IMAGES
 

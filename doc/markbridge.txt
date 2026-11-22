@@ -37,6 +37,7 @@ Health: `:checkhealth markbridge`
       follow = true,       -- retarget when you enter another markdown buffer
       scroll_sync = true,  -- scroll the page to the block under the cursor
       watch = true,        -- reload the buffer when the file changes on disk
+      friendly_url = true, -- http://<file>.localhost:<port>; false = 127.0.0.1
       theme = 'auto',      -- 'auto' (follow the OS), 'light' or 'dark'
       images_dir = 'assets', -- where pasted images go, relative to the file
     }
