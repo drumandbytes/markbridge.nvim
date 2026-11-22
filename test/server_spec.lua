@@ -183,6 +183,32 @@ vim.cmd 'silent! edit!' -- back to known content for the undo checks
 vim.wait(400)
 vim.cmd 'let &undolevels = &undolevels' -- a script run has no key presses, so force an undo break
 
+-- three-way merge of buffer edits and disk edits
+vim.fn.writefile({ 'one', 'two', 'three', 'four' }, md3)
+vim.cmd 'silent! edit!'
+vim.wait(400)
+vim.api.nvim_buf_set_lines(buf3, 3, 4, false, { 'FOUR from the buffer' }) -- buffer changes line 4
+vim.fn.writefile({ 'ONE from disk', 'two', 'three', 'four' }, md3) -- disk changes line 1
+check('disk change flagged for the merge', wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end))
+code, st = http('GET', '/merge')
+check('non-overlapping changes merge cleanly', code == 200 and #st.conflicts == 0 and st.mine == 1 and st.theirs == 1, st)
+code, st = http('POST', '/resolve', { id = buf3, choice = 'merge', picks = {} })
+check('merge applies both and saves', code == 200 and vim.deep_equal(vim.fn.readfile(md3), { 'ONE from disk', 'two', 'three', 'FOUR from the buffer' }) and not vim.bo[buf3].modified, st)
+
+vim.api.nvim_buf_set_lines(buf3, 1, 2, false, { 'two (mine)' })
+vim.fn.writefile({ 'ONE from disk', 'two (theirs)', 'three', 'FOUR from the buffer' }, md3)
+wait(function() local _, s = http('GET', '/state?tick=-1&id=-1'); return s.disk_changed == true end)
+code, st = http('GET', '/merge')
+check('overlapping changes are reported as a conflict', code == 200 and #st.conflicts == 1 and st.conflicts[1].mine[1] == 'two (mine)' and st.conflicts[1].theirs[1] == 'two (theirs)', st)
+code = http('POST', '/resolve', { id = buf3, choice = 'merge', picks = {} })
+check('merge with the wrong number of picks refused', code == 409)
+code = http('POST', '/resolve', { id = buf3, choice = 'merge', picks = { 'both' } })
+check('conflict resolved with both', code == 200 and vim.deep_equal(vim.fn.readfile(md3), { 'ONE from disk', 'two (mine)', 'two (theirs)', 'three', 'FOUR from the buffer' }), vim.fn.readfile(md3))
+vim.fn.writefile({ 'a', 'b', 'c' }, md3)
+vim.cmd 'silent! edit!'
+vim.wait(400)
+vim.cmd 'let &undolevels = &undolevels'
+
 -- undo / redo / refresh
 vim.cmd 'silent! write'
 code = http('POST', '/edit', { tick = vim.api.nvim_buf_get_changedtick(buf3), id = buf3, s = 0, e = 1, old = { 'a' }, lines = { 'A' } })

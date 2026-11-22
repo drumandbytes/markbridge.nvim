@@ -312,25 +312,53 @@
       ]);
   }
 
-  // The file changed on disk while the buffer has unsaved edits: show the difference and choose.
+  // The file changed on disk while the buffer has unsaved edits. Like a git merge: both are compared
+  // with the version nvim last read; changes that don't overlap combine, overlapping ones are yours to pick.
   async function diskDialog() {
+    let m = null;
+    try { m = await (await fetch('/merge', { headers: H })).json(); } catch {}
+    if (m && !m.no_base) return mergeDialog(m);
+    return plainDiskDialog();
+  }
+
+  const resolveWith = (body, done) => async () => {
+    try {
+      const r = await fetch('/resolve', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId, ...body }) });
+      const j = await r.json();
+      if (!r.ok) { status(j.error || 'could not resolve', true); return false; }
+      modified = j.modified; diskChanged = false; showSaved(); tick = -1;
+      status(done);
+    } catch { status('reconnecting…', true); return false; }
+  };
+
+  function mergeDialog(m) {
+    const k = m.conflicts.length;
+    const summary = `<p>It changed while you have unsaved edits. Compared with the version Neovim last read: you changed ${m.mine} place${m.mine === 1 ? '' : 's'}, the file changed in ${m.theirs}. `
+      + (k ? `${k} of them ${k === 1 ? 'overlaps' : 'overlap'}.` : 'They do not overlap, so both sets of changes combine.') + '</p>';
+    const conf = m.conflicts.map((c, i) => `<div class="conf"><b>Conflict ${i + 1} of ${k}</b>
+      <div class="cols"><div>Yours<pre>${esc(c.mine.join('\n')) || ' '}</pre></div><div>On disk<pre>${esc(c.theirs.join('\n')) || ' '}</pre></div></div>
+      <label><input type="radio" name="c${i}" value="mine" checked> Keep mine</label>
+      <label><input type="radio" name="c${i}" value="theirs"> Take the file’s</label>
+      <label><input type="radio" name="c${i}" value="both"> Both (mine first)</label></div>`).join('');
+    openDlg(`${m.name} changed on disk`, summary + conf, [
+      { label: k ? 'Apply merge and save' : 'Merge both and save', primary: true,
+        run: () => resolveWith({ choice: 'merge', picks: m.conflicts.map((_, i) => (card.querySelector(`input[name="c${i}"]:checked`) || {}).value || 'mine') }, 'merged and saved')() },
+      { label: 'Keep my version (overwrite the file)', run: resolveWith({ choice: 'keep' }, 'saved your version over the file') },
+      { label: 'Use the file’s version (discard my edits)', run: resolveWith({ choice: 'disk' }, 'loaded the file’s version') },
+      { label: 'Cancel', run: () => {} },
+    ]);
+  }
+
+  // No common ancestor known: a plain comparison and a choice of one side.
+  async function plainDiskDialog() {
     let d = { diff: '', name: name };
     try { d = await (await fetch('/diff', { headers: H })).json(); } catch {}
     const rows = (d.diff || '').split('\n').filter(l => !l.startsWith('@@') && l !== '').map(l => `<div class="${l[0] === '+' ? 'add' : l[0] === '-' ? 'del' : ''}">${esc(l)}</div>`).join('');
-    const resolve = choice => async () => {
-      try {
-        const r = await fetch('/resolve', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId, choice }) });
-        const j = await r.json();
-        if (!r.ok) { status(j.error || 'could not resolve', true); return false; }
-        modified = j.modified; diskChanged = false; showSaved(); tick = -1;
-        status(choice === 'keep' ? 'saved your version over the file' : 'loaded the file’s version');
-      } catch { status('reconnecting…', true); return false; }
-    };
     openDlg(`${d.name || 'The file'} changed on disk`,
       `<p>It changed while you have unsaved edits.</p><b>Differences</b> <small>(<span class="del">−</span> only in your buffer, <span class="add">+</span> only on disk)</small><pre class="diff">${rows || 'No line differences.'}</pre>`,
       [
-        { label: 'Keep my version (overwrite the file)', run: resolve('keep') },
-        { label: 'Use the file’s version (discard my edits)', run: resolve('disk') },
+        { label: 'Keep my version (overwrite the file)', run: resolveWith({ choice: 'keep' }, 'saved your version over the file') },
+        { label: 'Use the file’s version (discard my edits)', run: resolveWith({ choice: 'disk' }, 'loaded the file’s version') },
         { label: 'Cancel', primary: true, run: () => {} },
       ]);
   }

@@ -117,6 +117,9 @@
   .modal pre { margin: 4px 0 0; padding: 8px; overflow: auto; max-height: 40vh; border-radius: 6px; background: var(--paper-2); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .modal .diff .add { background: var(--on); }
   .modal .diff .del { color: var(--warn); }
+  .modal .conf { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--rule); }
+  .modal .conf label { margin-right: 12px; cursor: pointer; }
+  .modal .conf pre { max-height: 20vh; }
   .modal .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
   .modal .row button { padding: 8px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); cursor: pointer; }
   .modal .row button:hover { border-color: var(--ring); }
@@ -157,7 +160,7 @@
     </ul>
     <h3>Good to know</h3>
     <ul>
-      <li>If the file changed on disk while you have unsaved edits, <b>Resolve</b> shows the differences and lets you pick a side.</li>
+      <li>If the file changed on disk while you have unsaved edits, <b>Resolve</b> merges both sets of changes like git: non-overlapping ones combine, overlapping ones you pick.</li>
       <li>Edits change the Neovim buffer. <b>Save</b> (Cmd/Ctrl+S) writes the file; the tab title shows a dot while there are unsaved changes.</li>
       <li>An edited block is rewritten from the page; emphasis may normalise to <code>*x*</code> and <code>**x**</code>, tables are re-padded.</li>
       <li><b>Auto / Light / Dark</b> switches the page theme; the default comes from your Neovim config (<code>theme</code>).</li>

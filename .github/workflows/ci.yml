@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - name: Converter and page logic (node + jsdom)
         run: npm test
+      - name: Three-way merge (headless nvim)
+        run: nvim --headless -u NONE -l test/merge_spec.lua
       - name: Server, edits, file watching (headless nvim)
         run: nvim --headless -u NONE -l test/server_spec.lua
       - name: Vendored libraries match the pinned checksums

@@ -129,10 +129,15 @@ Neovim's buffer is the source of truth, and nothing is overwritten without you c
 - **You edit a block that nvim changed too.** A dialog shows your version next to nvim's. Pick
   *Keep nvim's version*, *Use mine* (replaces nvim's lines for that block) or *Copy mine*.
 - **The file changed on disk (another tool, another person, an AI agent) while the buffer has
-  unsaved edits.** Nvim keeps your buffer, the page shows a **Resolve** button (it also opens when
-  you press Save), and the dialog lists the differences (`-` only in your buffer, `+` only on disk).
-  Choose *Keep my version* (writes the buffer over the file), *Use the file's version* (reloads the
-  file, discarding your edits; undoable in nvim) or *Cancel*.
+  unsaved edits.** This is a three-way merge, like git's. markbridge remembers the file as Neovim
+  last read or wrote it and compares both your buffer and the file with it. Changes in different
+  places combine on their own; only overlapping changes are conflicts. Nvim keeps your buffer, the
+  page shows a **Resolve** button (it also opens when you press Save) and the dialog lists the
+  conflicts, each with *Keep mine*, *Take the file's* or *Both (mine first)*. *Apply merge and
+  save* writes the result (one undo step in nvim). *Keep my version* writes the buffer over the
+  file, and *Use the file's version* reloads the file, discarding your edits (undoable). If the
+  starting version isn't known (the buffer was already modified when the preview started) you get
+  a plain comparison and a choice of one side.
 - **The file changed on disk and the buffer is clean:** a file watcher runs `:checktime`, so the
   buffer reloads and the page follows.
 - **Undo.** One browser edit is one undo step in nvim.
