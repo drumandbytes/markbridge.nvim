@@ -19,7 +19,7 @@ mermaid block and some math:
 - [ ] Frontmatter field edits reach nvim; list-valued fields stay read-only
 - [ ] Block handle: move up/down, delete, turn into, insert below (all kinds), each one undo step in nvim
 - [ ] Top bar: B/I/S/code/link on a selection, ¶/H1-H3, lists, undo/redo (also Cmd/Ctrl+Z), refresh, help panel (Esc closes)
-- [ ] The opened URL is `<file>.localhost:<port>` and loads in each browser (Safari included); tab shows the file name and the favicon
+- [ ] The opened URL is `markbridge.localhost:<port>` and loads in each browser (Safari included); tab shows the file name and the favicon
 - [ ] Theme: Auto follows the OS both ways, Light and Dark force it, the choice survives a reload, `:Markbridge theme X` is adopted by an open page, mermaid and code colours follow
 - [ ] Shortcuts: Cmd/Ctrl+Alt+1..6 and 0, Shift+7/8/9, E, K, Shift+X
 - [ ] Paste a screenshot into a paragraph: file appears under assets/, image shows, markdown link written
