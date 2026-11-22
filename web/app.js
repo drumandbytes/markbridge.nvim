@@ -6,7 +6,7 @@
 
   let tick = -1, bufId = -1, lines = [], name = '', cursor = 0, lastCursor = 0;
   let pending = null, timer = null, inflight = false, queue = Promise.resolve(), fails = 0;
-  let ghost = null;
+  let ghost = null, rawEdit = null, fmTimer = null;
 
   const md = window.markdownit({
     html: true,
@@ -36,12 +36,13 @@
   function render() {
     const fm = C.frontmatterEnd(lines);
     const src = lines.map((l, i) => (i < fm ? '' : l)).join('\n'); // blank, not drop: keeps line numbers aligned
-    doc.innerHTML = (fm ? `<pre class="mb-frontmatter">${md.utils.escapeHtml(lines.slice(0, fm).join('\n'))}</pre>` : '') + md.render(src);
+    doc.innerHTML = (fm ? frontmatterHtml() : '') + md.render(src);
     C.taskify(document, doc);
     for (const el of doc.querySelectorAll('[data-s]')) {
       const k = C.kind(el, lines);
       if (!k) continue;
       el.dataset.k = k;
+      if (k === 'fence' || k === 'math') { el.classList.add('mb-raw'); el.title = 'Click to edit the source'; continue; }
       if (k === 'table') {
         C.tableAlign(el, lines.slice(+el.dataset.s, +el.dataset.e));
         for (const c of el.querySelectorAll('th, td')) c.contentEditable = 'true';
@@ -50,6 +51,14 @@
     }
     mermaid.run({ querySelector: '.language-mermaid' }).catch(() => {});
     ghost = null;
+    rawEdit = null;
+  }
+
+  function frontmatterHtml() {
+    const rows = C.frontmatterFields(lines).map(f => f.editable
+      ? `<label><span>${md.utils.escapeHtml(f.key)}</span><input data-i="${f.i}" data-key="${md.utils.escapeHtml(f.key)}" value="${md.utils.escapeHtml(f.value)}"></label>`
+      : `<div class="ro">${md.utils.escapeHtml(lines[f.i])}</div>`);
+    return `<div class="mb-fm" title="Frontmatter">${rows.join('')}</div>`;
   }
 
   const blockOf = node => {
@@ -71,7 +80,7 @@
         status('synced ' + new Date().toLocaleTimeString());
         return true;
       }
-      tick = j.tick; bufId = j.id; lines = j.lines; pending = null;
+      tick = j.tick; bufId = j.id; lines = j.lines; pending = null; rawEdit = null;
       render();
       status('nvim changed first: your edit was dropped', true);
     } catch { status('reconnecting…', true); }
@@ -94,15 +103,17 @@
   }
 
   // Re-render from the buffer after a structural edit, then put the caret in the block at `line`.
-  function focusLine(line, atEnd) {
+  function focusLine(line, atEnd, select) {
     render();
     const el = [...doc.querySelectorAll('[data-k]')].find(x => +x.dataset.s === line);
     if (!el) return;
+    if (el.classList.contains('mb-raw')) return editRaw(el);
     const target = el.dataset.k === 'table' ? el.querySelector('th, td') : el;
     target.focus();
     const sel = getSelection();
     sel.selectAllChildren(target);
     sel.collapse(target, atEnd ? target.childNodes.length : 0);
+    if (select) sel.selectAllChildren(target);
   }
 
   // Enter: split the block at the caret, or open an empty block below when the caret is at the end.
@@ -151,6 +162,7 @@
 
   doc.addEventListener('input', ev => {
     if (composing) return;
+    if (ev.target.matches && ev.target.matches('.mb-fm input')) return fmInput(ev.target);
     const g = ev.target.closest && ev.target.closest('[data-ghost]');
     if (g) { if (g.textContent.trim()) { clearTimeout(timer); timer = setTimeout(() => queue = queue.then(() => commitGhost(g)), 500); } return; }
     const el = blockOf(ev.target); if (!el) return;
@@ -168,6 +180,7 @@
     const el = blockOf(ev.target);
     if (!el) return;
     const cell = ev.target.closest && ev.target.closest('th, td');
+    if ((ev.metaKey || ev.ctrlKey) && !cell && ['p', 'h', 'li'].includes(el.dataset.k) && shortcut(ev, el)) { ev.preventDefault(); return; }
     if (cell && (ev.key === 'Enter' || ev.key === 'Tab')) { // move between cells, not into new lines
       ev.preventDefault();
       const cells = [...el.querySelectorAll('th, td')], i = cells.indexOf(cell), n = el.rows[0].cells.length;
@@ -183,16 +196,206 @@
     }
   });
 
+  async function insertImage(file) {
+    status('saving image…');
+    try {
+      const r = await fetch('/image', { method: 'POST', headers: { ...H, 'Content-Type': file.type }, body: file });
+      if (!r.ok) return status('could not save the image', true);
+      const j = await r.json();
+      document.execCommand('insertHTML', false, `<img src="${md.utils.escapeHtml(j.path)}" alt="">`);
+      status('image saved to ' + j.path);
+    } catch { status('could not save the image', true); }
+  }
+
   doc.addEventListener('paste', ev => {
     if (!blockOf(ev.target) && !ev.target.closest('[data-ghost]')) return;
+    const img = [...ev.clipboardData.files].find(f => /^image\/(png|jpeg|gif|webp)$/.test(f.type));
+    if (img) { ev.preventDefault(); return insertImage(img); }
     ev.preventDefault();
     document.execCommand('insertText', false, ev.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' '));
+  });
+
+  doc.addEventListener('dragover', ev => { if ([...ev.dataTransfer.types].includes('Files')) ev.preventDefault(); });
+  doc.addEventListener('drop', ev => {
+    const img = [...ev.dataTransfer.files].find(f => /^image\/(png|jpeg|gif|webp)$/.test(f.type));
+    if (!img) return;
+    ev.preventDefault();
+    const pos = document.caretRangeFromPoint ? document.caretRangeFromPoint(ev.clientX, ev.clientY) : null;
+    if (!pos || !blockOf(pos.startContainer)) return status('drop the image inside a paragraph', true);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(pos);
+    insertImage(img);
   });
 
   doc.addEventListener('focusout', ev => {
     if (timer && pending) flush(pending);
     const g = ev.target.closest && ev.target.closest('[data-ghost]');
     if (g) { if (g.textContent.trim()) queue = queue.then(() => commitGhost(g)); else g.remove(); }
+  });
+
+
+  // Wait for edits in flight so a structural change works on up-to-date lines.
+  async function settle() {
+    if (timer && pending) flush(pending);
+    await queue;
+  }
+
+  async function structural(edit, focus) {
+    await settle();
+    pending = null;
+    if (!(await send(edit.s, edit.e, edit.old || lines.slice(edit.s, edit.e), edit.lines))) return;
+    render();
+    if (focus != null) focusLine(focus.line, focus.atEnd, focus.select);
+  }
+
+  // ---- fenced code, mermaid, display math: click to edit the source -----------------------
+  function editRaw(el) {
+    if (rawEdit || !el.isConnected) return;
+    const [s, e] = C.span(el, lines);
+    let cur = { s, e, old: lines.slice(s, e) };
+    const ta = document.createElement('textarea');
+    ta.className = 'mb-raw-edit';
+    ta.spellcheck = false;
+    ta.value = C.rawBody(cur.old);
+    const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 4 + 'px'; };
+    el.hidden = true;
+    el.after(ta);
+    rawEdit = ta;
+    fit();
+    ta.focus();
+    let t = null;
+    const push = () => {
+      t = null;
+      queue = queue.then(async () => {
+        const nl = C.buildRaw(cur.old, ta.value);
+        if (JSON.stringify(nl) === JSON.stringify(cur.old)) return;
+        if (await send(cur.s, cur.e, cur.old, nl)) cur = { s: cur.s, e: cur.s + nl.length, old: nl };
+      });
+    };
+    ta.addEventListener('input', () => { fit(); clearTimeout(t); t = setTimeout(push, 500); });
+    ta.addEventListener('keydown', ev => { if (ev.key === 'Escape') ta.blur(); });
+    ta.addEventListener('blur', () => {
+      if (t) { clearTimeout(t); push(); }
+      queue = queue.then(() => { if (rawEdit === ta) { rawEdit = null; render(); } });
+    });
+  }
+
+  doc.addEventListener('click', ev => {
+    if (ev.target.closest('#tbl')) return;
+    const raw = ev.target.closest('.mb-raw');
+    if (raw && !getSelection().toString()) editRaw(raw);
+    // The clicked block becomes nvim's cursor line.
+    const el = ev.target.closest('[data-s]');
+    if (el && bufId >= 0) fetch('/cursor', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId, line: +el.dataset.s + 1 }) }).catch(() => {});
+  });
+
+  // ---- frontmatter fields ------------------------------------------------------------------
+  function fmInput(input) {
+    clearTimeout(fmTimer);
+    fmTimer = setTimeout(() => {
+      const i = +input.dataset.i, nl = `${input.dataset.key}: ${input.value}`;
+      queue = queue.then(async () => { fmTimer = null; if (lines[i] !== nl) await send(i, i + 1, [lines[i]], [nl]); });
+    }, 500);
+  }
+
+  // ---- block shortcuts ---------------------------------------------------------------------
+  // Cmd/Ctrl+Alt+0..6 paragraph/heading, Cmd/Ctrl+Shift+7/8/9 numbered/bullet/task list,
+  // Cmd/Ctrl+E inline code, Cmd/Ctrl+K link, Cmd/Ctrl+Shift+X strikethrough.
+  function shortcut(ev, el) {
+    const k = el.dataset.k, d = /^Digit(\d)$/.exec(ev.code);
+    let to = null;
+    if (ev.altKey && d && +d[1] <= 6) to = +d[1] ? 'h' + d[1] : 'p';
+    else if (ev.shiftKey && d && ['7', '8', '9'].includes(d[1])) to = { 7: 'ol', 8: 'ul', 9: 'task' }[d[1]];
+    if (to) {
+      const c = C.convertBlock(el, lines, k, to);
+      if (!c) return true;
+      clearTimeout(timer); timer = null; pending = null;
+      const lead = c.lines.findIndex(l => l.trim() !== '');
+      structural({ ...c, old: lines.slice(c.s, c.e) }, { line: c.s + lead, atEnd: true });
+      return true;
+    }
+    if (ev.altKey) return false;
+    const key = ev.key.toLowerCase();
+    if (key === 'e' && !ev.shiftKey) {
+      const sel = getSelection();
+      if (sel.rangeCount && !sel.isCollapsed) {
+        const r = sel.getRangeAt(0), code = document.createElement('code');
+        code.append(r.extractContents());
+        r.insertNode(code);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      return true;
+    }
+    if (key === 'k' && !ev.shiftKey) {
+      const url = prompt('Link URL');
+      if (url) { document.execCommand('createLink', false, url); el.dispatchEvent(new Event('input', { bubbles: true })); }
+      return true;
+    }
+    if (key === 'x' && ev.shiftKey) { document.execCommand('strikeThrough'); return true; }
+    return false;
+  }
+
+  // ---- block handle: move, delete, turn into, insert below ---------------------------------
+  const hnd = document.createElement('div');
+  hnd.id = 'hnd';
+  hnd.hidden = true;
+  hnd.innerHTML = '<button title="Block actions">⋮⋮</button><div id="menu" hidden></div>';
+  document.body.append(hnd);
+  const menu = hnd.querySelector('#menu');
+  let target = null;
+
+  const topBlocks = () => [...doc.children].filter(c => c.dataset && c.dataset.s !== undefined);
+  const rangeOf = el => C.span(el, lines);
+
+  doc.addEventListener('mousemove', ev => {
+    if (!menu.hidden) return;
+    const el = ev.target.closest && ev.target.closest('#doc > [data-s]');
+    if (!el) return;
+    target = el;
+    const r = el.getBoundingClientRect();
+    hnd.hidden = false;
+    hnd.style.top = r.top + scrollY + 'px';
+    hnd.style.left = r.left + scrollX - 34 + 'px';
+  });
+  document.addEventListener('mousedown', ev => { if (!hnd.contains(ev.target)) { menu.hidden = true; } });
+  document.addEventListener('mousemove', ev => {
+    if (menu.hidden && !doc.contains(ev.target) && !hnd.contains(ev.target)) hnd.hidden = true;
+  });
+
+  const INSERT = [['Paragraph', 'p'], ['Heading', 'h2'], ['Bullet list', 'ul'], ['Numbered list', 'ol'], ['Task list', 'task'], ['Quote', 'quote'], ['Code block', 'code'], ['Mermaid diagram', 'mermaid'], ['Math block', 'math'], ['Table', 'table'], ['Divider', 'hr']];
+  const TURN = [['Paragraph', 'p'], ['Heading 1', 'h1'], ['Heading 2', 'h2'], ['Heading 3', 'h3'], ['Bullet list', 'ul'], ['Numbered list', 'ol'], ['Task list', 'task']];
+
+  hnd.querySelector('button').addEventListener('click', () => {
+    if (!target) return;
+    const k = target.dataset.k, items = [['Move up', 'up'], ['Move down', 'down'], ['Delete', 'del']];
+    const part = (title, list, p) => `<h6>${title}</h6>` + list.map(([n, v]) => `<button data-a="${p}:${v}">${n}</button>`).join('');
+    menu.innerHTML = items.map(([n, v]) => `<button data-a="${v}">${n}</button>`).join('')
+      + ((k === 'p' || k === 'h') && target.dataset.l === '0' ? part('Turn into', TURN, 'turn') : '')
+      + part('Insert below', INSERT, 'ins');
+    menu.hidden = false;
+  });
+
+  menu.addEventListener('click', ev => {
+    const a = ev.target.dataset && ev.target.dataset.a;
+    if (!a || !target) return;
+    menu.hidden = true;
+    const el = target, [s, e] = rangeOf(el), [act, arg] = a.split(':');
+    const tops = topBlocks(), i = tops.indexOf(el);
+    if (act === 'del') return structural(C.deleteBlock(lines, [s, e]));
+    if (act === 'up' || act === 'down') {
+      const other = tops[i + (act === 'up' ? -1 : 1)];
+      if (!other) return;
+      const [a1, b1] = act === 'up' ? [[s, e], rangeOf(other)] : [rangeOf(other), [s, e]];
+      return structural(C.swapBlocks(lines, a1, b1));
+    }
+    if (act === 'turn') {
+      const c = C.convertBlock(el, lines, el.dataset.k, arg);
+      if (c) structural({ ...c, old: lines.slice(c.s, c.e) }, { line: c.s, atEnd: true });
+      return;
+    }
+    if (act === 'ins') {
+      const tpl = C.TEMPLATES[arg];
+      structural({ s: e, e, old: [], lines: ['', ...tpl] }, { line: e + 1, atEnd: false, select: true });
+    }
   });
 
   // Row/column buttons under the table being edited. mousedown is cancelled so the cell keeps focus.
@@ -238,14 +441,14 @@
 
   async function poll() {
     let delay = 500;
-    if (!pending && !inflight && !ghost) {
+    if (!pending && !inflight && !ghost && !rawEdit && !fmTimer) {
       try {
         const r = await fetch(`/state?tick=${tick}&id=${bufId}`, { headers: H });
         if (r.status === 410) return status('buffer closed in nvim: preview stopped', true);
         if (r.status === 403) return status('token rejected: open the URL from :Markbridge url', true);
         const j = await r.json();
         fails = 0;
-        if (!j.same && !pending) {
+        if (!j.same && !pending && !rawEdit && !fmTimer) {
           tick = j.tick; bufId = j.id; lines = j.lines; name = j.name;
           const keep = document.activeElement && document.activeElement.isContentEditable ? null : window.scrollY;
           render();

@@ -8,7 +8,8 @@ local M = {}
 ---@field follow boolean retarget the preview when you enter another markdown buffer
 ---@field scroll_sync boolean scroll the page to the block under the nvim cursor
 ---@field watch boolean reload the buffer when the file changes on disk (never over unsaved edits)
-M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true }
+---@field images_dir string folder, relative to the markdown file, where pasted images are saved
+M.config = { port = 0, open = true, follow = true, scroll_sync = true, watch = true, images_dir = 'assets' }
 
 local S -- running state
 
@@ -78,18 +79,27 @@ local function arm_watcher()
 end
 
 local function retarget(buf)
-  S.buf, S.disk_changed = buf, false
+  local name = vim.api.nvim_buf_get_name(buf)
+  S.buf, S.disk_changed, S.dir = buf, false, name ~= '' and vim.fs.dirname(vim.fn.fnamemodify(name, ':p')) or nil
   S.cursor = vim.api.nvim_buf_call(buf, function() return vim.fn.line '.' end)
   arm_watcher()
 end
 
+local EXT = { ['image/png'] = 'png', ['image/jpeg'] = 'jpg', ['image/gif'] = 'gif', ['image/webp'] = 'webp' }
+local MAX_IMAGE = 20 * 1024 * 1024
+
 local function handle(client, req)
   if not S then return end
+  -- A rebinding attack arrives with the attacker's hostname; only our own origin is served.
+  if req.host ~= ('127.0.0.1:%d'):format(S.port) and req.host ~= ('localhost:%d'):format(S.port) then
+    return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden')
+  end
   if req.method == 'GET' and req.path == '/' then
     if req.query:match 't=(%x+)' ~= S.token then return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden') end
     return server.page(client)
   end
   if req.method == 'GET' and server.static(client, req.path) then return end
+  if req.method == 'GET' and S.dir and server.image(client, S.dir, req.path) then return end
   vim.schedule(function()
     if not S then return end
     if not req.token or req.token ~= S.token then return server.respond(client, '403 Forbidden', 'text/plain', 'forbidden') end
@@ -129,6 +139,29 @@ local function handle(client, req)
         return server.json(client, '409 Conflict', vim.tbl_extend('force', snapshot(buf), extra))
       end
       return server.json(client, '200 OK', { ok = true, tick = vim.api.nvim_buf_get_changedtick(buf) })
+    end
+    if req.method == 'POST' and req.path == '/cursor' then
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf or type(r.line) ~= 'number' then return server.respond(client, '400 Bad Request', 'text/plain', 'bad cursor') end
+      local line = math.max(1, math.min(math.floor(r.line), vim.api.nvim_buf_line_count(buf)))
+      S.cursor = line
+      local win = vim.fn.bufwinid(buf)
+      if win > 0 then pcall(vim.api.nvim_win_set_cursor, win, { line, 0 }) end
+      return server.json(client, '200 OK', { ok = true })
+    end
+    if req.method == 'POST' and req.path == '/image' then
+      local ext = EXT[req.ctype or '']
+      if not ext or not S.dir or #req.body == 0 or #req.body > MAX_IMAGE then return server.respond(client, '400 Bad Request', 'text/plain', 'cannot save this image') end
+      local sub = M.config.images_dir
+      local dir = vim.fs.joinpath(S.dir, sub)
+      vim.fn.mkdir(dir, 'p')
+      local name = ('pasted-%s-%04d.%s'):format(os.date '%Y%m%d-%H%M%S', math.random(0, 9999), ext)
+      local f = io.open(vim.fs.joinpath(dir, name), 'wb')
+      if not f then return server.respond(client, '500 Internal Server Error', 'text/plain', 'cannot write') end
+      f:write(req.body)
+      f:close()
+      return server.json(client, '200 OK', { ok = true, path = sub .. '/' .. name })
     end
     server.respond(client, '404 Not Found', 'text/plain', 'not found')
   end)

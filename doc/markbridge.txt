@@ -36,6 +36,7 @@ Health: `:checkhealth markbridge`
       follow = true,       -- retarget when you enter another markdown buffer
       scroll_sync = true,  -- scroll the page to the block under the cursor
       watch = true,        -- reload the buffer when the file changes on disk
+      images_dir = 'assets', -- where pasted images go, relative to the file
     }
 <
 
@@ -52,6 +53,13 @@ is at the end (paragraph, list item). In a table cell Enter and Tab move between
 cells, and Tab in the last cell adds a row. Buttons above a focused table add and
 remove rows and columns. Shift+Enter is a hard line break. Clicking a task
 checkbox toggles it.
+
+Code, mermaid and `$$` math blocks open their source in a text box on click.
+Frontmatter `key: value` lines are fields. A pasted or dropped image is saved to
+`images_dir` and linked. Shortcuts (Cmd or Ctrl): Alt+0..6 paragraph/heading,
+Shift+7/8/9 numbered/bullet/task list, E inline code, K link, Shift+X strike. The
+handle left of a top-level block moves, deletes, converts it, or inserts a block
+below. Clicking a block moves the nvim cursor to it.
 
 An edited block is rewritten from the page; the rest of the file is untouched.
 Soft-wrapped lines are kept, emphasis normalises to `*x*` / `**x**`, some
