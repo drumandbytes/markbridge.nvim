@@ -82,6 +82,11 @@ require('markbridge').setup {
 Not editable: HTML blocks, indented code, setext headings (`Title` over `====`), paragraphs with
 reference links, footnotes or `<https://...>` autolinks (they can't be rebuilt faithfully from the page).
 
+**Top bar.** Bold, italic, strikethrough, inline code, link; paragraph, H1 to H3; bullet, numbered and
+task list; undo and redo (these run nvim's undo, so browser and nvim stay in step; Cmd/Ctrl+Z does the
+same); refresh (reloads from nvim and re-reads the file from disk when the buffer has no unsaved edits);
+help (Cmd/Ctrl+/) with the shortcut list. Buttons reflect the formatting at the caret.
+
 **Shortcuts** (Cmd on macOS, Ctrl elsewhere): `Alt+0` to `Alt+6` paragraph or heading level,
 `Shift+7` / `Shift+8` / `Shift+9` numbered, bullet and task list (top-level blocks), `E` inline code,
 `K` link, `Shift+X` strikethrough, `B` and `I` bold and italic.

@@ -150,6 +150,17 @@ local function handle(client, req)
       if win > 0 then pcall(vim.api.nvim_win_set_cursor, win, { line, 0 }) end
       return server.json(client, '200 OK', { ok = true })
     end
+    if req.method == 'POST' and (req.path == '/undo' or req.path == '/refresh') then
+      if req.path == '/refresh' then
+        if not vim.bo[buf].modified then vim.cmd(('silent! checktime %d'):format(buf)) end
+        return server.json(client, '200 OK', { ok = true, modified = vim.bo[buf].modified })
+      end
+      local ok, r = pcall(vim.json.decode, req.body)
+      r = ok and type(r) == 'table' and r or {}
+      if r.id ~= buf then return server.respond(client, '400 Bad Request', 'text/plain', 'bad buffer') end
+      vim.api.nvim_buf_call(buf, function() vim.cmd(r.redo and 'silent! redo' or 'silent! undo') end)
+      return server.json(client, '200 OK', { ok = true })
+    end
     if req.method == 'POST' and req.path == '/image' then
       local ext = EXT[req.ctype or '']
       if not ext or not S.dir or #req.body == 0 or #req.body > MAX_IMAGE then return server.respond(client, '400 Bad Request', 'text/plain', 'cannot save this image') end

@@ -297,42 +297,115 @@
     }, 500);
   }
 
-  // ---- block shortcuts ---------------------------------------------------------------------
-  // Cmd/Ctrl+Alt+0..6 paragraph/heading, Cmd/Ctrl+Shift+7/8/9 numbered/bullet/task list,
-  // Cmd/Ctrl+E inline code, Cmd/Ctrl+K link, Cmd/Ctrl+Shift+X strikethrough.
-  function shortcut(ev, el) {
-    const k = el.dataset.k, d = /^Digit(\d)$/.exec(ev.code);
-    let to = null;
-    if (ev.altKey && d && +d[1] <= 6) to = +d[1] ? 'h' + d[1] : 'p';
-    else if (ev.shiftKey && d && ['7', '8', '9'].includes(d[1])) to = { 7: 'ol', 8: 'ul', 9: 'task' }[d[1]];
-    if (to) {
-      const c = C.convertBlock(el, lines, k, to);
-      if (!c) return true;
+  // ---- formatting: shortcuts and toolbar share one entry point ---------------------------------
+  // Names: bold italic strike code link p h1..h6 ul ol task.
+  function format(name, el) {
+    const k = el.dataset.k;
+    const touch = () => el.dispatchEvent(new Event('input', { bubbles: true }));
+    if (/^(p|h[1-6]|ul|ol|task)$/.test(name)) {
+      const c = C.convertBlock(el, lines, k, name);
+      if (!c) return status('only top-level paragraphs, headings and list items can change type', true);
       clearTimeout(timer); timer = null; pending = null;
       const lead = c.lines.findIndex(l => l.trim() !== '');
       structural({ ...c, old: lines.slice(c.s, c.e) }, { line: c.s + lead, atEnd: true });
-      return true;
-    }
-    if (ev.altKey) return false;
-    const key = ev.key.toLowerCase();
-    if (key === 'e' && !ev.shiftKey) {
+    } else if (name === 'bold') { document.execCommand('bold'); touch(); }
+    else if (name === 'italic') { document.execCommand('italic'); touch(); }
+    else if (name === 'strike') { document.execCommand('strikeThrough'); touch(); }
+    else if (name === 'code') {
       const sel = getSelection();
       if (sel.rangeCount && !sel.isCollapsed) {
         const r = sel.getRangeAt(0), code = document.createElement('code');
         code.append(r.extractContents());
         r.insertNode(code);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+        touch();
       }
-      return true;
-    }
-    if (key === 'k' && !ev.shiftKey) {
+    } else if (name === 'link') {
       const url = prompt('Link URL');
-      if (url) { document.execCommand('createLink', false, url); el.dispatchEvent(new Event('input', { bubbles: true })); }
-      return true;
+      if (url) { document.execCommand('createLink', false, url); touch(); }
     }
-    if (key === 'x' && ev.shiftKey) { document.execCommand('strikeThrough'); return true; }
-    return false;
   }
+
+  // Cmd/Ctrl+Alt+0..6 paragraph/heading, +Shift+7/8/9 lists, +E code, +K link, +Shift+X strike.
+  function shortcut(ev, el) {
+    const d = /^Digit(\d)$/.exec(ev.code);
+    let name = null;
+    if (ev.altKey && d && +d[1] <= 6) name = +d[1] ? 'h' + d[1] : 'p';
+    else if (ev.shiftKey && d && ['7', '8', '9'].includes(d[1])) name = { 7: 'ol', 8: 'ul', 9: 'task' }[d[1]];
+    else if (!ev.altKey) {
+      const key = ev.key.toLowerCase();
+      if (key === 'e' && !ev.shiftKey) name = 'code';
+      else if (key === 'k' && !ev.shiftKey) name = 'link';
+      else if (key === 'x' && ev.shiftKey) name = 'strike';
+    }
+    if (!name) return false;
+    format(name, el);
+    return true;
+  }
+
+  // ---- top bar: formatting, undo, refresh, help ------------------------------------------------
+  const BTN = [
+    ['bold', '<b>B</b>', 'Bold (Cmd/Ctrl+B)'], ['italic', '<i>I</i>', 'Italic (Cmd/Ctrl+I)'], ['strike', '<s>S</s>', 'Strikethrough (Cmd/Ctrl+Shift+X)'],
+    ['code', '&lt;/&gt;', 'Inline code (Cmd/Ctrl+E)'], ['link', 'Link', 'Link (Cmd/Ctrl+K)'], '|',
+    ['p', '¶', 'Paragraph (Cmd/Ctrl+Alt+0)'], ['h1', 'H1', 'Heading 1 (Cmd/Ctrl+Alt+1)'], ['h2', 'H2', 'Heading 2'], ['h3', 'H3', 'Heading 3'], '|',
+    ['ul', '•', 'Bullet list (Cmd/Ctrl+Shift+8)'], ['ol', '1.', 'Numbered list (Cmd/Ctrl+Shift+7)'], ['task', '☑', 'Task list (Cmd/Ctrl+Shift+9)'], '|',
+    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['refresh', '↻', 'Reload from nvim and from disk'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
+  ];
+  const top = document.getElementById('top');
+  top.insertAdjacentHTML('afterbegin', BTN.map(b => b === '|' ? '<i class="sep"></i>' : `<button data-f="${b[0]}" title="${b[2]}">${b[1]}</button>`).join(''));
+  const activeBlock = () => { const n = document.activeElement; return n && n.closest ? n.closest('[data-k]') : null; };
+
+  top.addEventListener('mousedown', ev => ev.preventDefault()); // keep the text selection
+  top.addEventListener('click', async ev => {
+    const f = ev.target.closest('[data-f]') && ev.target.closest('[data-f]').dataset.f;
+    if (!f) return;
+    if (f === 'help') return toggleHelp();
+    if (f === 'refresh') return refresh();
+    if (f === 'undo' || f === 'redo') return nvimUndo(f);
+    const el = activeBlock();
+    if (!el || el.dataset.k === 'table') return status('click into a paragraph, heading or list item first', true);
+    format(f, el);
+  });
+
+  async function nvimUndo(which) {
+    await settle();
+    try { await fetch('/undo', { method: 'POST', headers: H, body: JSON.stringify({ id: bufId, redo: which === 'redo' }) }); tick = -1; } catch { status('reconnecting…', true); }
+  }
+
+  // Reload from nvim and tell it to re-read the file when the buffer has no unsaved edits.
+  async function refresh() {
+    await settle();
+    try { await fetch('/refresh', { method: 'POST', headers: H, body: '{}' }); tick = -1; status('refreshed'); } catch { status('reconnecting…', true); }
+  }
+
+  const help = document.getElementById('help');
+  const toggleHelp = () => { help.hidden = !help.hidden; };
+  help.addEventListener('click', ev => { if (ev.target === help || ev.target.closest('.close')) help.hidden = true; });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !help.hidden) help.hidden = true;
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === '/') { ev.preventDefault(); toggleHelp(); }
+    // Undo is nvim's: each browser edit is one nvim undo step, so the two stay in step.
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !(ev.target.closest && ev.target.closest('textarea, input'))) {
+      ev.preventDefault();
+      nvimUndo(ev.shiftKey ? 'redo' : 'undo');
+    }
+  });
+
+  // Reflect the caret's formatting on the buttons.
+  document.addEventListener('selectionchange', () => {
+    const el = activeBlock();
+    for (const b of top.querySelectorAll('[data-f]')) {
+      const f = b.dataset.f;
+      let on = false;
+      if (el) {
+        if (f === 'bold' || f === 'italic') on = document.queryCommandState(f);
+        else if (f === 'strike') on = document.queryCommandState('strikeThrough');
+        else if (/^h[1-6]$/.test(f)) on = el.tagName === f.toUpperCase();
+        else if (f === 'p') on = el.tagName === 'P';
+        else if (f === 'ul' || f === 'ol') on = !!el.closest(f === 'ul' ? 'ul' : 'ol');
+      }
+      b.classList.toggle('on', on);
+    }
+  });
 
   // ---- block handle: move, delete, turn into, insert below ---------------------------------
   const hnd = document.createElement('div');

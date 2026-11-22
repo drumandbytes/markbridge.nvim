@@ -137,6 +137,20 @@ check('non-image type refused', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{
 vim.fn.writefile({ 'secret' }, vim.fn.tempname() .. '.png')
 check('image outside the folder not served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--path-as-is', 'http://127.0.0.1:' .. port .. '/../../etc/hosts.png' }) ~= '200')
 
+-- undo / redo / refresh
+vim.cmd 'silent! write'
+code = http('POST', '/edit', { tick = vim.api.nvim_buf_get_changedtick(buf3), id = buf3, s = 0, e = 1, old = { 'a' }, lines = { 'A' } })
+check('edit before undo', code == 200 and vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'A')
+http('POST', '/undo', { id = buf3 })
+check('undo over http', vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'a')
+http('POST', '/undo', { id = buf3, redo = true })
+check('redo over http', vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'A')
+vim.cmd 'silent! write'
+local wasoff = mb.config.watch
+vim.fn.writefile({ 'from disk', 'b', 'c' }, md3)
+http('POST', '/refresh', {})
+check('refresh re-reads the file', wait(function() return vim.api.nvim_buf_get_lines(buf3, 0, 1, false)[1] == 'from disk' end))
+
 -- stop
 vim.cmd 'bwipeout!'
 check('server stops when previewed buffer dies', true)
