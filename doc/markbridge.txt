@@ -20,6 +20,7 @@ CONTENTS                                                    *markbridge-contents
         stop     stop the server
         url      print the URL (it contains a per-session token)
         status   running or stopped
+        theme    `:Markbridge theme [auto|light|dark]` shows or sets the page theme
 <
 Lua API: `require('markbridge')`: `.start()`, `.stop()`, `.toggle()`, `.url()`,
 `.is_running()`, `.setup({opts})`.
@@ -36,6 +37,7 @@ Health: `:checkhealth markbridge`
       follow = true,       -- retarget when you enter another markdown buffer
       scroll_sync = true,  -- scroll the page to the block under the cursor
       watch = true,        -- reload the buffer when the file changes on disk
+      theme = 'auto',      -- 'auto' (follow the OS), 'light' or 'dark'
       images_dir = 'assets', -- where pasted images go, relative to the file
     }
 <

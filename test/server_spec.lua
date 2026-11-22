@@ -137,6 +137,14 @@ check('non-image type refused', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{
 vim.fn.writefile({ 'secret' }, vim.fn.tempname() .. '.png')
 check('image outside the folder not served', raw({ 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--path-as-is', 'http://127.0.0.1:' .. port .. '/../../etc/hosts.png' }) ~= '200')
 
+-- theme
+local _, st1 = http('GET', '/state?tick=-1&id=-1')
+check('state carries the default theme', st1.theme == 'auto', st1.theme)
+vim.cmd 'Markbridge theme dark'
+local _, st2 = http('GET', '/state?tick=-1&id=-1')
+check(':Markbridge theme changes it', st2.theme == 'dark', st2.theme)
+mb.set_theme('auto')
+
 -- undo / redo / refresh
 vim.cmd 'silent! write'
 code = http('POST', '/edit', { tick = vim.api.nvim_buf_get_changedtick(buf3), id = buf3, s = 0, e = 1, old = { 'a' }, lines = { 'A' } })

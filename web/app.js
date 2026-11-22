@@ -17,21 +17,44 @@
   });
   C.install(md, { emoji: (window.markdownitEmoji || {}).full || window.markdownitEmoji, katex: window.katex });
 
-  const dark = matchMedia('(prefers-color-scheme: dark)');
-  const mermaidInit = () => mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark.matches ? 'dark' : 'default' });
+  // ---- theme: auto follows the OS; light/dark force it. The choice is kept per browser and the
+  // default comes from the nvim config (`theme`), adopted again whenever that config changes.
+  const MODES = ['auto', 'light', 'dark'];
+  const osDark = matchMedia('(prefers-color-scheme: dark)');
+  const keep = {
+    get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  };
+  let mode = MODES.includes(keep.get('markbridge-theme')) ? keep.get('markbridge-theme') : 'auto';
+  const resolved = () => (mode === 'auto' ? (osDark.matches ? 'dark' : 'light') : mode);
+  const mermaidInit = () => mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: resolved() === 'dark' ? 'dark' : 'default' });
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   mermaidInit();
-  dark.addEventListener('change', () => { mermaidInit(); render(); });
 
   const status = (s, warn) => { bar.textContent = s; bar.className = warn ? 'warn' : ''; };
 
-  // Hide the highlight.js theme that doesn't match the colour scheme.
+  // The highlight.js theme that matches the page theme.
   const hl = document.createElement('style');
   document.head.append(hl);
   const setHl = async () => {
-    const f = dark.matches ? 'github-dark' : 'github';
-    hl.textContent = await (await fetch(`/vendor/highlight/${f}.min.css`)).text();
+    const f = resolved() === 'dark' ? 'github-dark' : 'github';
+    try { hl.textContent = await (await fetch(`/vendor/highlight/${f}.min.css`)).text(); } catch {}
   };
-  setHl(); dark.addEventListener('change', setHl);
+
+  function applyTheme(rerender) {
+    document.documentElement.dataset.theme = resolved();
+    const b = document.querySelector('[data-f="theme"]');
+    if (b) b.textContent = { auto: 'Auto', light: 'Light', dark: 'Dark' }[mode];
+    mermaidInit();
+    setHl();
+    if (rerender && !pending && !rawEdit) render(); // diagrams are drawn with the theme's colours
+  }
+  osDark.addEventListener('change', () => { if (mode === 'auto') applyTheme(true); });
+  function setMode(m, remember = true) {
+    mode = MODES.includes(m) ? m : 'auto';
+    if (remember) keep.set('markbridge-theme', mode);
+    applyTheme(true);
+  }
 
   function render() {
     const fm = C.frontmatterEnd(lines);
@@ -348,10 +371,11 @@
     ['code', '&lt;/&gt;', 'Inline code (Cmd/Ctrl+E)'], ['link', 'Link', 'Link (Cmd/Ctrl+K)'], '|',
     ['p', '¶', 'Paragraph (Cmd/Ctrl+Alt+0)'], ['h1', 'H1', 'Heading 1 (Cmd/Ctrl+Alt+1)'], ['h2', 'H2', 'Heading 2'], ['h3', 'H3', 'Heading 3'], '|',
     ['ul', '•', 'Bullet list (Cmd/Ctrl+Shift+8)'], ['ol', '1.', 'Numbered list (Cmd/Ctrl+Shift+7)'], ['task', '☑', 'Task list (Cmd/Ctrl+Shift+9)'], '|',
-    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['refresh', '↻', 'Reload from nvim and from disk'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
+    ['undo', '↶', 'Undo in nvim (Cmd/Ctrl+Z)'], ['redo', '↷', 'Redo in nvim (Cmd/Ctrl+Shift+Z)'], ['refresh', '↻', 'Reload from nvim and from disk'], ['theme', 'Auto', 'Theme: auto, light or dark'], ['help', '?', 'Help and shortcuts (Cmd/Ctrl+/)'],
   ];
   const top = document.getElementById('top');
   top.insertAdjacentHTML('afterbegin', BTN.map(b => b === '|' ? '<i class="sep"></i>' : `<button data-f="${b[0]}" title="${b[2]}">${b[1]}</button>`).join(''));
+  applyTheme(false);
   const activeBlock = () => { const n = document.activeElement; return n && n.closest ? n.closest('[data-k]') : null; };
 
   top.addEventListener('mousedown', ev => ev.preventDefault()); // keep the text selection
@@ -359,6 +383,7 @@
     const f = ev.target.closest('[data-f]') && ev.target.closest('[data-f]').dataset.f;
     if (!f) return;
     if (f === 'help') return toggleHelp();
+    if (f === 'theme') return setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
     if (f === 'refresh') return refresh();
     if (f === 'undo' || f === 'redo') return nvimUndo(f);
     const el = activeBlock();
@@ -390,11 +415,13 @@
     }
   });
 
-  // Reflect the caret's formatting on the buttons.
-  document.addEventListener('selectionchange', () => {
+  // Reflect the caret's formatting on the buttons; text tools need a focused block.
+  const TEXT_TOOLS = /^(bold|italic|strike|code|link|p|h[1-6]|ul|ol|task)$/;
+  function updateBar() {
     const el = activeBlock();
     for (const b of top.querySelectorAll('[data-f]')) {
       const f = b.dataset.f;
+      b.disabled = TEXT_TOOLS.test(f) && (!el || el.dataset.k === 'table');
       let on = false;
       if (el) {
         if (f === 'bold' || f === 'italic') on = document.queryCommandState(f);
@@ -405,7 +432,10 @@
       }
       b.classList.toggle('on', on);
     }
-  });
+  }
+  document.addEventListener('selectionchange', updateBar);
+  document.addEventListener('focusout', () => setTimeout(updateBar, 0));
+  updateBar();
 
   // ---- block handle: move, delete, turn into, insert below ---------------------------------
   const hnd = document.createElement('div');
@@ -509,7 +539,7 @@
   function scrollTo(line) {
     let best = null;
     for (const el of doc.querySelectorAll('[data-s]')) if (+el.dataset.s <= line - 1) best = el; else break;
-    if (best) best.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (best) best.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
   }
 
   async function poll() {
@@ -521,6 +551,7 @@
         if (r.status === 403) return status('token rejected: open the URL from :Markbridge url', true);
         const j = await r.json();
         fails = 0;
+        if (j.theme && j.theme !== keep.get('markbridge-server-theme')) { keep.set('markbridge-server-theme', j.theme); setMode(j.theme); }
         if (!j.same && !pending && !rawEdit && !fmTimer) {
           tick = j.tick; bufId = j.id; lines = j.lines; name = j.name;
           const keep = document.activeElement && document.activeElement.isContentEditable ? null : window.scrollY;
