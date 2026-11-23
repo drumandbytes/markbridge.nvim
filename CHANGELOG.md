@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/drumandbytes/markbridge.nvim/compare/v0.3.0...v0.4.0) (2026-11-23)
+
+
+### Features
+
+* nest lists with Tab, convert whole lists, edit parent items, exit lists with Enter ([#12](https://github.com/drumandbytes/markbridge.nvim/issues/12)) ([ff043d6](https://github.com/drumandbytes/markbridge.nvim/commit/ff043d6ae567293fbdd7dad257d25af0b56f6d13))
+
 ## [0.3.0](https://github.com/drumandbytes/markbridge.nvim/compare/v0.2.0...v0.3.0) (2026-11-22)
 
 
