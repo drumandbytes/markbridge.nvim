@@ -70,7 +70,11 @@
         C.tableAlign(el, lines.slice(+el.dataset.s, +el.dataset.e));
         for (const c of el.querySelectorAll('th, td')) c.contentEditable = 'true';
       }
-      else el.contentEditable = 'true';
+      else {
+        el.contentEditable = 'true';
+        // Nested lists are their own editing hosts, not part of the parent item's text.
+        for (const n of el.children) if (/^[UO]L$/.test(n.tagName)) n.contentEditable = 'false';
+      }
     }
     mermaid.run({ querySelector: '.language-mermaid' }).catch(() => {});
     ghost = null;
@@ -124,13 +128,14 @@
 
   async function commit(el) {
     if (!el.isConnected) return;
-    const k = el.dataset.k, [s, e] = C.span(el, lines), old = lines.slice(s, e), nl = C.build(el, lines, k);
+    const k = el.dataset.k, [s, e] = C.ownSpan(el, lines), old = lines.slice(s, e), nl = C.build(el, lines, k);
     if (!nl || JSON.stringify(nl) === JSON.stringify(old)) { if (pending === el) pending = null; return; }
     if ((await send(s, e, old, nl)) === true) {
       const d = nl.length - (e - s);
       for (const o of doc.querySelectorAll('[data-s]')) {
-        if (o === el) o.dataset.e = e + d;
+        if (o === el) o.dataset.e = (el.querySelector('ul, ol') ? +o.dataset.e : e) + d;
         else if (+o.dataset.s >= e) { o.dataset.s = +o.dataset.s + d; o.dataset.e = +o.dataset.e + d; }
+        else if (o.contains(el)) o.dataset.e = +o.dataset.e + d;
       }
     }
     if (pending === el && !timer) pending = null;
@@ -154,12 +159,14 @@
   function enter(el) {
     const k = el.dataset.k, top = el.dataset.l === '0';
     if (k === 'table' || (k !== 'li' && !top)) return;
-    const [s, e] = C.span(el, lines), old = lines.slice(s, e);
+    const [s, e] = C.span(el, lines), oe = C.ownSpan(el, lines)[1], old = lines.slice(s, oe);
     const sel = getSelection();
     if (!sel.rangeCount) return;
     const r = sel.getRangeAt(0);
     const before = document.createRange(); before.selectNodeContents(el); before.setEnd(r.startContainer, r.startOffset);
     const after = document.createRange(); after.selectNodeContents(el); after.setStart(r.endContainer, r.endOffset);
+    const nest = [...el.children].find(c => /^[UO]L$/.test(c.tagName));
+    if (nest) after.setEndBefore(nest);
     const b = C.fragmentToMd(before.cloneContents()), a = C.fragmentToMd(after.cloneContents());
     if (!b) return;
     const pfx = old[0].match(C.PREFIX)[0];
@@ -178,16 +185,18 @@
     if (k === 'li') { nl = [pfx + b, pfx + a]; target = s + 1; }
     else if (k === 'h') { nl = [old[0].match(/^ {0,3}#{1,6}[ \t]+/)[0] + b.replace(/\s*\n\s*/g, ' '), '', ...al]; target = s + 2; }
     else { nl = [...bl, '', ...al]; target = s + bl.length + 1; }
-    queue = queue.then(async () => { if (await send(s, e, old, nl)) focusLine(target, false); });
+    queue = queue.then(async () => { if (await send(s, oe, old, nl)) focusLine(target, false); });
   }
 
   async function commitGhost(g) {
+    if (!g.isConnected) return;
     const text = C.clean(C.inl(g, false));
     if (!text) return;
     const at = +g.dataset.s, li = g.dataset.k === 'li';
-    const nl = li ? text.split('\n').map((l, i) => (i ? C.contPrefix(g.dataset.pfx) : g.dataset.pfx) + l) : ['', ...text.split('\n')];
+    const q = g.dataset.q || '';
+    const nl = li ? text.split('\n').map((l, i) => (i ? C.contPrefix(g.dataset.pfx) : g.dataset.pfx) + l) : [q.trimEnd(), ...text.split('\n').map(l => q + l)];
     ghost = null;
-    if (await send(at, at, [], nl)) focusLine(li ? at : at + 1, true);
+    if (await send(at, at, [], nl)) { render(); focusLine(li ? at : at + 1, true); } // render drops the ghost, so blur can't write it twice
   }
 
   let composing = false; // IME: wait for compositionend before committing
@@ -210,9 +219,45 @@
     ev.target.dispatchEvent(new Event('input', { bubbles: true }));
   });
 
+  // An empty new list item: Tab nests it, Shift+Tab or Enter moves it out; from the top level it becomes a paragraph after the list.
+  function ghostShift(g, dir) {
+    const pfx = C.shiftPrefix(lines, +g.dataset.s, g.dataset.pfx, dir);
+    if (pfx != null) {
+      g.dataset.pfx = pfx;
+      g.style.marginLeft = Math.max(0, (parseFloat(g.style.marginLeft) || 0) + dir * 1.5) + 'em';
+      return;
+    }
+    if (dir > 0) return;
+    let outer = g.parentElement;
+    while (outer.parentElement && outer.parentElement.closest('ul, ol')) outer = outer.parentElement.closest('ul, ol');
+    if (!outer || !/^[UO]L$/.test(outer.tagName) || outer.dataset.s === undefined) return;
+    const p = document.createElement('p');
+    Object.assign(p.dataset, { ghost: '1', k: 'p', s: C.span(outer, lines)[1], e: C.span(outer, lines)[1], pfx: '', q: g.dataset.pfx.match(/^(?:[ \t]*>[ \t]?)*/)[0] });
+    p.contentEditable = 'true';
+    outer.after(p);
+    ghost = p;
+    p.focus(); // the empty ghost removes itself on blur
+    if (g.isConnected) g.remove();
+  }
+
   doc.addEventListener('keydown', ev => {
     const el = blockOf(ev.target);
     if (!el) return;
+    if (el.dataset.ghost && el.dataset.k === 'li' && !el.textContent.trim() && !ev.isComposing
+      && (ev.key === 'Tab' || (ev.key === 'Enter' && !ev.shiftKey))) {
+      ev.preventDefault();
+      return ghostShift(el, ev.key === 'Tab' && !ev.shiftKey ? 1 : -1);
+    }
+    if (ev.key === 'Tab' && el.dataset.k === 'li' && !el.dataset.ghost && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+      ev.preventDefault();
+      const dir = ev.shiftKey ? -1 : 1;
+      settle().then(() => {
+        const c = C.indentItem(el, lines, dir);
+        if (!c) return status(dir > 0 ? 'nothing above to nest under' : 'already at the top level', true);
+        structural({ ...c, old: lines.slice(c.s, c.e) }, { line: c.s, atEnd: true });
+      });
+      return;
+    }
     const cell = ev.target.closest && ev.target.closest('th, td');
     if ((ev.metaKey || ev.ctrlKey) && !cell && ['p', 'h', 'li'].includes(el.dataset.k) && shortcut(ev, el)) { ev.preventDefault(); return; }
     if (cell && (ev.key === 'Enter' || ev.key === 'Tab')) { // move between cells, not into new lines
@@ -420,7 +465,7 @@
     const touch = () => el.dispatchEvent(new Event('input', { bubbles: true }));
     if (/^(p|h[1-6]|ul|ol|task)$/.test(name)) {
       const c = C.convertBlock(el, lines, k, name);
-      if (!c) return status('only top-level paragraphs, headings and list items can change type', true);
+      if (!c) return status('this block cannot change type (nested list items can only become other list types)', true);
       clearTimeout(timer); timer = null; pending = null;
       const lead = c.lines.findIndex(l => l.trim() !== '');
       structural({ ...c, old: lines.slice(c.s, c.e) }, { line: c.s + lead, atEnd: true });

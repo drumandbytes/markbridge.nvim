@@ -113,9 +113,29 @@
     return [s, e];
   }
 
+  const NESTED = /^[UO]L$/;
+  // A list item's own lines: everything before its first nested list.
+  function ownSpan(el, lines) {
+    const [s, e] = span(el, lines);
+    if (el.tagName !== 'LI') return [s, e];
+    const n = [...el.children].find(c => NESTED.test(c.tagName) && c.dataset.s !== undefined);
+    if (!n) return [s, e];
+    let oe = Math.max(s + 1, Math.min(e, +n.dataset.s));
+    while (oe > s + 1 && lines[oe - 1].trim() === '') oe--;
+    return [s, oe];
+  }
+
+  // Inline markdown of an item's own text, without its nested lists.
+  function inlOwn(el) {
+    if (!el.querySelector('ul, ol')) return inl(el, false);
+    const c = el.cloneNode(true);
+    for (const n of [...c.children]) if (NESTED.test(n.tagName)) n.remove();
+    return inl(c, false);
+  }
+
   function kind(el, lines) {
     if (el.dataset.s === undefined) return null;
-    const [s, e] = span(el, lines);
+    const [s, e] = ownSpan(el, lines);
     const old = lines.slice(s, e);
     if (UNSAFE.test(old.join('\n'))) return null;
     const rest0 = (old[0] || '').replace(PREFIX, '');
@@ -124,7 +144,7 @@
         return e - s === 1 && HEAD.test((old[0] || '').replace(/^(?:[ \t]*>[ \t]?)*/, '')) ? 'h' : null;
       case 'P': return /^\s*$/.test(rest0) && old.length === 1 ? null : 'p';
       case 'LI':
-        return ITEM.test(old[0] || '') && [...el.children].every(c => !BLOCKY.test(c.tagName)) ? 'li' : null;
+        return ITEM.test(old[0] || '') && [...el.children].every(c => !BLOCKY.test(c.tagName) || NESTED.test(c.tagName)) ? 'li' : null;
       case 'TABLE': return /^\s*\|?.*\|/.test(rest0) ? 'table' : null;
       case 'PRE': return rawParts(old) ? 'fence' : null;
       case 'DIV': return el.dataset.raw === 'math' && rawParts(old) ? 'math' : null;
@@ -287,10 +307,10 @@
 
   // New source lines for one block, or null when there is nothing to write.
   function build(el, lines, k) {
-    const [s, e] = span(el, lines);
+    const [s, e] = ownSpan(el, lines);
     const old = lines.slice(s, e);
     if (k === 'table') return buildTable(el, old);
-    const text = clean(inl(el, false));
+    const text = clean(inlOwn(el));
     if (!text) return null;
     const pfx = old[0].match(PREFIX)[0];
     if (k === 'h') {
@@ -319,19 +339,95 @@
     }
   }
 
-  // Turn a top-level paragraph/heading/list item into another kind: to is p, h1-h6, ul, ol, task.
+  // Switch a whole list (the one `el` belongs to) to bullets, numbers or tasks, keeping nesting.
+  const MARK = /^((?:[ \t]*>[ \t]?)*)([ \t]*)((?:[-*+]|\d+[.)])[ \t]+)(\[[ xX]\][ \t]+)?/;
+  function convertList(el, lines, to) {
+    const list = el.parentElement;
+    if (!list || !/^[UO]L$/.test(list.tagName) || list.dataset.s === undefined) return null;
+    const [ls, le] = span(list, lines);
+    const out = lines.slice(ls, le);
+    let n = 0;
+    for (const li of list.children) {
+      if (li.tagName !== 'LI' || li.dataset.s === undefined) continue;
+      const [s, e] = span(li, lines);
+      const m = lines[s].match(MARK);
+      if (!m) return null;
+      n++;
+      const box = to === 'task' ? (m[4] ? m[4] : '[ ] ') : '';
+      const mark = to === 'ol' ? n + '. ' : '- ';
+      const first = m[1] + m[2] + mark + box + lines[s].slice(m[0].length);
+      const delta = mark.length - m[3].length;
+      out[s - ls] = first;
+      for (let i = s + 1; i < e; i++) {
+        const q = lines[i].match(/^(?:[ \t]*>[ \t]?)*/)[0], rest = lines[i].slice(q.length);
+        if (!rest.trim()) continue;
+        const ws = rest.match(/^[ \t]*/)[0].length;
+        out[i - ls] = q + (delta >= 0 ? ' '.repeat(delta) + rest : rest.slice(Math.min(-delta, ws)));
+      }
+    }
+    return { s: ls, e: le, lines: out };
+  }
+
+  // Indent (dir > 0, under the previous sibling) or outdent (dir < 0, to the parent's level) one list item
+  // with everything nested in it. Null when it can't move.
+  function indentItem(el, lines, dir) {
+    const [s, e] = span(el, lines);
+    const m = lines[s].match(MARK);
+    if (!m) return null;
+    let amount;
+    if (dir > 0) {
+      const prev = el.previousElementSibling;
+      if (!prev || prev.tagName !== 'LI' || prev.dataset.s === undefined) return null;
+      const pm = lines[span(prev, lines)[0]].match(MARK);
+      if (!pm) return null;
+      amount = pm[3].length;
+    } else {
+      const parent = el.parentElement && el.parentElement.parentElement;
+      if (!parent || parent.tagName !== 'LI' || parent.dataset.s === undefined) return null;
+      const pm = lines[span(parent, lines)[0]].match(MARK);
+      amount = pm ? pm[2].length - m[2].length : 0;
+      if (amount >= 0) return null;
+    }
+    const out = lines.slice(s, e).map(l => {
+      const q = l.match(/^(?:[ \t]*>[ \t]?)*/)[0], rest = l.slice(q.length);
+      if (!rest.trim()) return l;
+      return q + (amount > 0 ? ' '.repeat(amount) + rest : rest.slice(Math.min(-amount, rest.match(/^[ \t]*/)[0].length)));
+    });
+    return { s, e, lines: out };
+  }
+
+  // Prefix for a new empty item one level in (dir > 0) or out (dir < 0) from `pfx`, found in the source above `at`.
+  function shiftPrefix(lines, at, pfx, dir) {
+    const m = pfx.match(/^((?:[ \t]*>[ \t]?)*)([ \t]*)((?:[-*+]|\d+[.)])[ \t]+)$/);
+    if (!m) return null;
+    const mark = /\d/.test(m[3]) ? '1. ' : m[3];
+    if (dir > 0) return m[1] + m[2] + ' '.repeat(m[3].length) + mark;
+    for (let i = Math.min(at, lines.length) - 1; i >= 0; i--) {
+      const pm = lines[i].match(MARK);
+      if (pm && pm[1] === m[1] && pm[2].length < m[2].length) return pm[1] + pm[2] + (/\d/.test(pm[3]) ? '1. ' : pm[3]);
+    }
+    return null;
+  }
+
+  // Turn a paragraph, heading or list item into another kind: to is p, h1-h6, ul, ol, task.
+  // A list item switched to ul/ol/task converts its whole list. Not for nested items, to p/h.
   function convertBlock(el, lines, k, to) {
-    if (el.dataset.l !== (k === 'li' ? '1' : '0') || !['p', 'h', 'li'].includes(k)) return null; // top level only
+    if (!['p', 'h', 'li'].includes(k)) return null;
+    if (k === 'li' && /^(ul|ol|task)$/.test(to)) return convertList(el, lines, to);
+    if (k === 'li' && el.querySelector('ul, ol')) return null; // would orphan its nested items
+    if (el.parentElement && el.parentElement.closest('li') && k !== 'li') return null;
+    if (k === 'li' && el.parentElement.parentElement && el.parentElement.parentElement.closest('li')) return null;
     const [s, e] = span(el, lines);
     const text = clean(inl(el, false)).replace(/\s*\n\s*/g, ' ');
     if (!text) return null;
+    const q = lines[s].match(/^(?:[ \t]*>[ \t]?)*/)[0];
     const head = /^h[1-6]$/.test(to) ? '#'.repeat(+to[1]) + ' ' : to === 'ul' ? '- ' : to === 'ol' ? '1. ' : to === 'task' ? '- [ ] ' : '';
-    let out = [head + text];
-    if (k === 'li' && !head.startsWith('-') && !/^\d/.test(head)) { // out of a list: keep it from merging back in
-      if (s > 0 && lines[s - 1].trim() !== '') out.unshift('');
-      if (e < lines.length && lines[e].trim() !== '') out.push('');
+    let out = [q + head + text];
+    if (k === 'li') { // out of a list: keep it from merging back in
+      const blank = l => l.replace(/^(?:[ \t]*>[ \t]?)*/, '').trim() === '';
+      if (s > 0 && !blank(lines[s - 1])) out.unshift(q.trimEnd());
+      if (e < lines.length && !blank(lines[e])) out.push(q.trimEnd());
     }
-    if (k !== 'li' && head && /^(?:- |1\. )/.test(head)) out = [head + text];
     return { s, e, lines: out };
   }
 
@@ -383,5 +479,5 @@
   // Markdown for a DOM range/fragment (used to split a block at the caret).
   const fragmentToMd = frag => clean(inl(frag, false));
 
-  return { findBlock, rawParts, rawBody, buildRaw, convertBlock, swapBlocks, deleteBlock, TEMPLATES, frontmatterFields, tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, build, inl, taskify, fragmentToMd, clean };
+  return { indentItem, shiftPrefix, findBlock, rawParts, rawBody, buildRaw, convertBlock, swapBlocks, deleteBlock, TEMPLATES, frontmatterFields, tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, ownSpan, build, inl, taskify, fragmentToMd, clean };
 });

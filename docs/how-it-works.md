@@ -32,7 +32,7 @@ sequenceDiagram
 
 ## The block model
 
-markdown-it reports the source line range of every block. `core.js` adds those ranges to the rendered elements (`data-s` start, `data-e` end) and decides which blocks are editable (`kind`): top-level and nested paragraphs, `#` headings, leaf list items, tables, closed fenced code and `$$` blocks.
+markdown-it reports the source line range of every block. `core.js` adds those ranges to the rendered elements (`data-s` start, `data-e` end) and decides which blocks are editable (`kind`): top-level and nested paragraphs, `#` headings, list items (a parent item edits only its own lines, before its nested list), tables, closed fenced code and `$$` blocks.
 
 When you edit a block, `core.js` converts just that element's DOM back to markdown (`build`), keeping the line prefix (list marker, quote `>`, indent) of the original. The page then sends the old lines and the new lines for that range. Everything outside the range is never touched. Constructs that cannot be rebuilt faithfully (reference links, footnotes, autolinks, setext headings, HTML blocks, indented code) are not made editable.
 
