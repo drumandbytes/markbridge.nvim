@@ -231,8 +231,8 @@
     let outer = g.parentElement;
     while (outer.parentElement && outer.parentElement.closest('ul, ol')) outer = outer.parentElement.closest('ul, ol');
     if (!outer || !/^[UO]L$/.test(outer.tagName) || outer.dataset.s === undefined) return;
-    const p = document.createElement('p');
-    Object.assign(p.dataset, { ghost: '1', k: 'p', s: C.span(outer, lines)[1], e: C.span(outer, lines)[1], pfx: '', q: g.dataset.pfx.match(/^(?:[ \t]*>[ \t]?)*/)[0] });
+    const p = document.createElement('p'), end = C.span(outer, lines)[1];
+    Object.assign(p.dataset, { ghost: '1', k: 'p', s: end, e: end, pfx: '', q: g.dataset.pfx.match(/^(?:[ \t]*>[ \t]?)*/)[0] });
     p.contentEditable = 'true';
     outer.after(p);
     ghost = p;

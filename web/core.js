@@ -167,7 +167,7 @@
     const last = old[old.length - 1];
     if (!closeRe.test(stripQuote(last).slice(cont.length > 0 && stripQuote(last).startsWith(cont) ? cont.length : 0))) return null;
     const unpad = l => (l.startsWith(cont) ? l.slice(cont.length) : l);
-    return { open: old[0], close: last, cont, body: old.slice(1, -1).map(l => unpad(l.startsWith(pfx) ? l : l)) };
+    return { open: old[0], close: last, cont, body: old.slice(1, -1).map(unpad) };
   }
 
   const rawBody = old => (rawParts(old) || { body: [] }).body.join('\n');
