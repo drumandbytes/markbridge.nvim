@@ -25,10 +25,9 @@ get "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/$HLJS/highlight.min.js"
 get "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/$HLJS/styles/github.min.css" highlight/github.min.css
 get "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/$HLJS/styles/github-dark.min.css" highlight/github-dark.min.css
 get "$CDN/mermaid@$MERMAID/dist/mermaid.min.js" mermaid.min.js
-get "$CDN/github-markdown-css@5.8.1/github-markdown.css" github-markdown.css
 # The upstream file switches theme with a media query only; the page needs to force a theme,
 # so rewrite its two media blocks to :root[data-theme=...] scopes (the page sets the attribute).
-perl -0pe 's/\@media \(prefers-color-scheme: (dark|light)\) \{\s*\.markdown-body, \[data-theme="\1"\] \{([^}]*)\}\s*\}/:root[data-theme="$1"] .markdown-body {$2}/g' github-markdown.css >github-markdown.themed.css
+get "$CDN/github-markdown-css@5.8.1/github-markdown.css" - | perl -0pe 's/\@media \(prefers-color-scheme: (dark|light)\) \{\s*\.markdown-body, \[data-theme="\1"\] \{([^}]*)\}\s*\}/:root[data-theme="$1"] .markdown-body {$2}/g' >github-markdown.themed.css
 grep -q 'prefers-color-scheme' github-markdown.themed.css && { echo "theme rewrite failed"; exit 1; }
 
 if [ -f SHA256SUMS ]; then

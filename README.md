@@ -2,6 +2,11 @@
 
 Edit your markdown in the browser and watch it land in Neovim.
 
+[![CI](https://github.com/drumandbytes/markbridge.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/drumandbytes/markbridge.nvim/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/drumandbytes/markbridge.nvim)](https://github.com/drumandbytes/markbridge.nvim/releases)
+[![Neovim 0.10+](https://img.shields.io/badge/Neovim-0.10%2B-57A143?logo=neovim&logoColor=white)](#requirements)
+[![License: MIT](https://img.shields.io/github/license/drumandbytes/markbridge.nvim)](LICENSE)
+
 markbridge renders the file you are editing in a real page (diagrams, math, task lists, tables, highlighted code) and lets you **type straight into the rendered text**. Every change is written back to your Neovim buffer as markdown, within about half a second. Edit in Neovim and the page follows.
 
 [More Drumandbytes projects](https://drumandbytes.com/projects/?ref=markbridge.nvim-readme)
@@ -23,7 +28,7 @@ Browser previewers for Neovim are one-way: you read the rendering and go back to
 
 ## Features
 
-- Edit paragraphs, headings, lists, task items and table cells in place, with a formatting bar and keyboard shortcuts.
+- Edit paragraphs, headings, lists, task items and table cells in place, with a formatting bar and keyboard shortcuts. Tab nests list items, Shift+Tab moves them out.
 - Click a code block, mermaid diagram or `$$` math block to edit its source.
 - Frontmatter fields (`key: value`) become inputs; table rows and columns can be added and removed.
 - Block menu: move, delete, convert or insert blocks. Paste or drop an image and it is saved next to the file.
@@ -125,11 +130,18 @@ require('markbridge').setup {
 | Paragraphs, headings (`#`), list items, task items, table cells, also inside quotes and lists | Type, use the formatting bar or shortcuts, paste (as plain text), click a task checkbox |
 | Fenced code, mermaid, `$$` math | Click to open the source in a text box; the page re-renders when you leave it (Esc) |
 | Frontmatter | Flat `key: value` lines are fields at the top of the page; lists and block values stay read-only |
-| Enter | Splits the block at the caret; at the end it opens an empty block below. In a table cell, Enter and Tab move between cells and Tab in the last cell adds a row |
+| Enter | Splits the block at the caret; at the end it opens an empty block below |
 | Shift+Enter | A hard line break |
-| Tables | Buttons above the focused table add or remove rows and columns after the current cell; column alignment (`:--`, `:-:`, `--:`) stays with its column |
+| Tables | Tab and Enter move between cells, and Tab in the last cell adds a row. Buttons above the focused table add or remove rows and columns after the current cell; column alignment (`:--`, `:-:`, `--:`) stays with its column |
 | Images | Paste or drop an image into a paragraph: it is saved to `assets/` next to the file and linked |
 | Click a block | Moves the Neovim cursor to its first line |
+
+**Lists**
+
+- Tab nests an item under the one above it; its children move with it. Shift+Tab moves it back out.
+- Enter at the end of an item opens a new one. Enter on that empty item moves it out a level, and at the top level it becomes a paragraph after the list.
+- Turning an item into a bullet, numbered or task item converts the whole list. Nested lists keep their own type.
+- An item that has nested items is editable too: you edit its own text, and the nested list is left alone.
 
 <p align="center">
   <picture>
@@ -138,11 +150,17 @@ require('markbridge').setup {
   </picture>
 </p>
 
-Not editable (rendered, but read-only): HTML blocks, indented code, setext headings (a title over `====`), and paragraphs that use reference links, footnotes or `<https://…>` autolinks, because those can't be rebuilt faithfully from the page.
+Not editable (rendered, but read-only): HTML blocks, indented code, setext headings (a title over `====`), list items whose paragraphs are separated by blank lines (loose lists), and paragraphs that use reference links, footnotes or `<https://…>` autolinks, because those can't be rebuilt faithfully from the page.
 
-**Shortcuts** (Cmd on macOS, Ctrl elsewhere): `B` bold, `I` italic, `Shift+X` strikethrough, `E` inline code, `K` link, `Alt+0` to `Alt+6` paragraph or heading level, `Shift+7` / `Shift+8` / `Shift+9` numbered, bullet and task list, `S` save, `Z` / `Shift+Z` undo and redo, `/` for the in-page help.
+**Shortcuts** (Cmd on macOS, Ctrl elsewhere): `B` bold, `I` italic, `Shift+X` strikethrough, `E` inline code, `K` link, `Alt+0` to `Alt+6` paragraph or heading level, `Tab` / `Shift+Tab` (no modifier) nest and outdent a list item, `Shift+7` / `Shift+8` / `Shift+9` numbered, bullet and task list, `S` save, `Z` / `Shift+Z` undo and redo, `/` for the in-page help.
 
-**Top bar.** Formatting, block type and lists, undo and redo (these run Neovim's undo, so browser edits and Neovim edits share one history), Save, refresh (reloads from Neovim and re-reads the file from disk when the buffer has no unsaved edits), the theme button and help.
+**Top bar**
+
+- Formatting, block type (paragraph, headings) and list buttons.
+- Undo and redo run Neovim's own undo, so browser edits and Neovim edits share one history.
+- Save writes the file.
+- Refresh reloads from Neovim, and re-reads the file from disk when the buffer has no unsaved edits.
+- Theme and help.
 
 <p align="center">
   <picture>

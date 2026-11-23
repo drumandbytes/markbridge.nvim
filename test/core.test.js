@@ -48,7 +48,7 @@ for (const [name, src] of Object.entries(CANON)) {
     const { lines, blocks } = setup(src);
     assert.ok(blocks.length > 0, 'has editable blocks');
     for (const { el, k } of blocks) {
-      const [s, e] = C.span(el, lines);
+      const [s, e] = C.ownSpan(el, lines);
       assert.deepEqual(C.build(el, lines, k), lines.slice(s, e), `${k} @${s}`);
     }
   });
@@ -178,7 +178,45 @@ test('convert paragraph to heading, list, and back out of a list', () => {
   r = el0('intro\n\n- a\n- b\n- c', 'li:nth-child(2)');
   const out = C.convertBlock(r.el, r.lines, 'li', 'p');
   assert.deepEqual(out, { s: 3, e: 4, lines: ['', 'b', ''] });
-  assert.equal(C.convertBlock(setup('> quoted').root.querySelector('p'), ['> quoted'], 'p', 'h2'), null, 'only top level');
+  assert.deepEqual(C.convertBlock(setup('> quoted').root.querySelector('p'), ['> quoted'], 'p', 'h2').lines, ['> ## quoted']);
+});
+
+test('converting a list item converts the whole list, keeping nesting', () => {
+  let r = el0('- a\n- b\n  - c\n- d', 'li');
+  assert.deepEqual(C.convertBlock(r.el, r.lines, 'li', 'ol'), { s: 0, e: 4, lines: ['1. a', '2. b', '   - c', '3. d'] });
+  r = el0('1. a\n2. b', 'li');
+  assert.deepEqual(C.convertBlock(r.el, r.lines, 'li', 'task').lines, ['- [ ] a', '- [ ] b']);
+  r = el0('> - a\n> - b', 'li');
+  assert.deepEqual(C.convertBlock(r.el, r.lines, 'li', 'ol').lines, ['> 1. a', '> 2. b']);
+  r = el0('- a\n  - b\n  - c', 'li li');
+  assert.deepEqual(C.convertBlock(r.el, r.lines, 'li', 'ol').lines, ['  1. b', '  2. c']);
+});
+
+test('indent and outdent list items', () => {
+  let r = el0('- a\n- b\n  - c', 'li:nth-child(2)');
+  assert.equal(C.indentItem(el0('- a\n- b', 'li').el, ['- a', '- b'], 1), null, 'first item has nothing above');
+  r = el0('- a\n- b', 'li:nth-child(2)');
+  assert.deepEqual(C.indentItem(r.el, r.lines, 1), { s: 1, e: 2, lines: ['  - b'] });
+  r = el0('1. a\n2. b', 'li:nth-child(2)');
+  assert.deepEqual(C.indentItem(r.el, r.lines, 1).lines, ['   2. b']);
+  r = el0('- a\n  - [ ] b\n  - c', 'li li:nth-child(1)');
+  assert.deepEqual(C.indentItem(r.el, r.lines, -1).lines, ['- [ ] b']);
+  assert.equal(C.indentItem(el0('- a', 'li').el, ['- a'], -1), null);
+  assert.equal(C.shiftPrefix(['- a', '  - b'], 2, '  - ', -1), '- ');
+  assert.equal(C.shiftPrefix(['- a'], 1, '- ', -1), null);
+  assert.equal(C.shiftPrefix(['1. a'], 1, '1. ', 1), '   1. ');
+});
+
+test('items with nested lists are editable: own text only', () => {
+  const { root, lines, blocks } = setup('- a\n  - b\n  - c\n- d');
+  const a = root.querySelector('li');
+  assert.equal(C.kind(a, lines), 'li');
+  assert.deepEqual(C.ownSpan(a, lines), [0, 1]);
+  a.firstChild.nodeValue = 'a edited';
+  assert.deepEqual(C.build(a, lines, 'li'), ['- a edited']);
+  assert.equal(blocks.length, 4);
+  assert.equal(C.convertBlock(a, lines, 'li', 'p'), null, 'would orphan children');
+  assert.equal(C.convertBlock(a, lines, 'li', 'ol').lines.join('|'), '1. a|   - b|   - c|2. d');
 });
 
 test('swap and delete blocks keep spacing', () => {
