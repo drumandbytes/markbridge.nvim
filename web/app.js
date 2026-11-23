@@ -33,7 +33,6 @@
 
   const status = (s, warn) => { bar.textContent = s; bar.className = warn ? 'warn' : ''; };
 
-  // The highlight.js theme that matches the page theme.
   const hl = document.createElement('style');
   document.head.append(hl);
   const setHl = async () => {
@@ -95,9 +94,8 @@
 
   const flush = el => { clearTimeout(timer); timer = null; queue = queue.then(() => commit(el)); };
 
-  // Sends one edit. Resolves true when nvim applied it. When nvim changed first the page reloads from
-  // nvim, then the edit is re-applied if its block is still there unchanged ('rebased'); if nvim
-  // changed that block too, the two versions are shown and you choose.
+  // Resolves true when nvim applied the edit. If nvim changed first: reload, re-apply when the block
+  // is unchanged ('rebased'), else show both versions.
   async function send(s, e, old, nl, retry = true) {
     inflight = true;
     try {
@@ -219,7 +217,7 @@
     ev.target.dispatchEvent(new Event('input', { bubbles: true }));
   });
 
-  // An empty new list item: Tab nests it, Shift+Tab or Enter moves it out; from the top level it becomes a paragraph after the list.
+  // Empty new list item: Tab nests, Shift+Tab/Enter outdents; at top level it turns into a paragraph after the list.
   function ghostShift(g, dir) {
     const pfx = C.shiftPrefix(lines, +g.dataset.s, g.dataset.pfx, dir);
     if (pfx != null) {
@@ -312,7 +310,7 @@
   });
 
 
-  // Wait for edits in flight so a structural change works on up-to-date lines.
+  // Structural edits must see up-to-date lines.
   async function settle() {
     if (timer && pending) flush(pending);
     await queue;
@@ -357,8 +355,7 @@
       ]);
   }
 
-  // The file changed on disk while the buffer has unsaved edits. Like a git merge: both are compared
-  // with the version nvim last read; changes that don't overlap combine, overlapping ones are yours to pick.
+  // File changed on disk with unsaved edits: three-way merge against what nvim last read.
   async function diskDialog() {
     let m = null;
     try { m = await (await fetch('/merge', { headers: H })).json(); } catch {}
@@ -638,7 +635,7 @@
       + ((k === 'p' || k === 'h') && target.dataset.l === '0' ? part('Turn into', TURN, 'turn') : '')
       + part('Insert below', INSERT, 'ins');
     menu.hidden = false;
-    // Keep the whole menu on screen: it opens downwards, and slides up when the block is low on the page.
+    // Opens downwards, slides up when the block is low on the page.
     const r = hnd.getBoundingClientRect();
     menu.style.top = Math.max(Math.min(24, innerHeight - r.top - menu.offsetHeight - 8), 52 - r.top) + 'px';
   });

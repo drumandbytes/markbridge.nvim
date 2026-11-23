@@ -339,7 +339,7 @@
     }
   }
 
-  // Switch a whole list (the one `el` belongs to) to bullets, numbers or tasks, keeping nesting.
+  // Whole list of `el` to bullets, numbers or tasks, nesting kept.
   const MARK = /^((?:[ \t]*>[ \t]?)*)([ \t]*)((?:[-*+]|\d+[.)])[ \t]+)(\[[ xX]\][ \t]+)?/;
   function convertList(el, lines, to) {
     const list = el.parentElement;
@@ -368,8 +368,7 @@
     return { s: ls, e: le, lines: out };
   }
 
-  // Indent (dir > 0, under the previous sibling) or outdent (dir < 0, to the parent's level) one list item
-  // with everything nested in it. Null when it can't move.
+  // Indent (dir > 0) under the previous sibling or outdent (dir < 0) to the parent's level, children included.
   function indentItem(el, lines, dir) {
     const [s, e] = span(el, lines);
     const m = lines[s].match(MARK);
@@ -396,7 +395,7 @@
     return { s, e, lines: out };
   }
 
-  // Prefix for a new empty item one level in (dir > 0) or out (dir < 0) from `pfx`, found in the source above `at`.
+  // Marker prefix one level in (dir > 0) or out (dir < 0) from `pfx`; outdent looks upward from `at`.
   function shiftPrefix(lines, at, pfx, dir) {
     const m = pfx.match(/^((?:[ \t]*>[ \t]?)*)([ \t]*)((?:[-*+]|\d+[.)])[ \t]+)$/);
     if (!m) return null;
@@ -409,8 +408,7 @@
     return null;
   }
 
-  // Turn a paragraph, heading or list item into another kind: to is p, h1-h6, ul, ol, task.
-  // A list item switched to ul/ol/task converts its whole list. Not for nested items, to p/h.
+  // to: p, h1-h6, ul, ol or task. A list item to a list type converts its whole list; to p/h only if not nested.
   function convertBlock(el, lines, k, to) {
     if (!['p', 'h', 'li'].includes(k)) return null;
     if (k === 'li' && /^(ul|ol|task)$/.test(to)) return convertList(el, lines, to);
@@ -476,7 +474,6 @@
     return best;
   }
 
-  // Markdown for a DOM range/fragment (used to split a block at the caret).
   const fragmentToMd = frag => clean(inl(frag, false));
 
   return { indentItem, shiftPrefix, findBlock, rawParts, rawBody, buildRaw, convertBlock, swapBlocks, deleteBlock, TEMPLATES, frontmatterFields, tableAlign, tableOps, PREFIX, ITEM, HEAD, contPrefix, frontmatterEnd, install, span, kind, ownSpan, build, inl, taskify, fragmentToMd, clean };

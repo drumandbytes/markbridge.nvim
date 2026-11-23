@@ -119,9 +119,7 @@ local MAX_IMAGE = 20 * 1024 * 1024
 
 local function handle(client, req)
   if not S then return end
-  -- A rebinding attack arrives with the attacker's hostname; only our own origin is served.
-  -- Any <label>.localhost is loopback by definition (the browser resolves it itself), so it
-  -- can't be a rebinding target; arbitrary hostnames can.
+  -- DNS rebinding guard: only our own origin is served. *.localhost is always loopback, so it's safe.
   local h = req.host or ''
   local ok_host = h == ('127.0.0.1:%d'):format(S.port) or h == ('localhost:%d'):format(S.port)
     or (h:match('^[%w%-]+%.localhost:(%d+)$') == tostring(S.port))
